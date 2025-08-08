@@ -52,6 +52,25 @@
             hidden
             style="min-height: 8rem; resize: vertical;"
           ></textarea>
+          
+          <!-- Media Preview Section -->
+          <div id="mediaPreview" class="mt-4" hidden>
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h5 class="mb-0">📱 内容预览</h5>
+              <div class="btn-group" role="group">
+                <button type="button" class="btn btn-sm btn-outline-primary" onclick="toggleView('list')">
+                  📋 列表
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-primary" onclick="toggleView('grid')">
+                  🔲 网格
+                </button>
+              </div>
+            </div>
+            <div id="mediaContainer" class="media-container">
+              <!-- 动态内容将在这里显示 -->
+            </div>
+          </div>
+          
           <button
             onclick="copyToClipboard()"
             id="autocopy"
@@ -63,6 +82,14 @@
           </button>
         </div>
       </div>
+    </div>
+    
+    <!-- Lightbox for image viewing -->
+    <div id="lightbox" class="lightbox" style="display: none;">
+      <span class="lightbox-close">&times;</span>
+      <span class="lightbox-nav lightbox-prev">❮</span>
+      <span class="lightbox-nav lightbox-next">❯</span>
+      <img id="lightbox-img" src="" alt="">
     </div>
     
     <!-- JavaScript -->
