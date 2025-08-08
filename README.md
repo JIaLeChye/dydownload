@@ -3,7 +3,7 @@
         <img alt="Original Author" src="https://img.shields.io/badge/Original Author-helson_lin-blue">
     </a>
     <a href="https://github.com/helson-lin/douyin_no_watermark"> 
-        <img alt="Project Link" src="https://img.shields.io/badge/Project Link-douyin__no__watermark">
+        <img alt="Project Link" src="https://img.shields.io/badge/Project Link-douyin__no__watermark-blue">
     </a>
 </p>
 
