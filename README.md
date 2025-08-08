@@ -20,9 +20,9 @@
     <a href="https://github.com/JIaLeChye/dydownload">
         <img alt="github stars" src="https://img.shields.io/github/stars/JIaLeChye/dydownload?style=social"/>
     </a>
-    <a href="https://github.com/JIaLeChye/dydownload">
+    <!-- <a href="https://github.com/JIaLeChye/dydownload">
           <img alt="release downloads" src="https://img.shields.io/github/downloads/JIaLeChye/dydownload/total?color=brightgreen&label=release%20download"/>
-    </a>
+    </a> -->
     <a href="https://github.com/JIaLeChye/dydownload">
         <img alt="platform support" src="https://img.shields.io/badge/platform-macos%7Clinux%7Cwin-brightgreen"/>
     </a>
