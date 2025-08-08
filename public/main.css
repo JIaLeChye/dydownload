@@ -476,6 +476,33 @@ body {
     padding: 0.8rem;
   }
   
+  /* 非全屏模式下的媒体项可点击提示 */
+  #mediaPreview:not(.fullscreen-mobile) .media-item {
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+  }
+  
+  #mediaPreview:not(.fullscreen-mobile) .media-item:active {
+    transform: scale(0.98);
+  }
+  
+  /* 添加点击提示 */
+  #mediaPreview:not(.fullscreen-mobile) .media-item::before {
+    content: "👆 轻触进入全屏";
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 10px;
+    opacity: 0.8;
+    pointer-events: none;
+    z-index: 10;
+  }
+  
   .media-content video {
     max-height: 250px;
   }

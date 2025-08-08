@@ -686,14 +686,14 @@ function displayMediaItems(mediaItems) {
     let mediaContent;
     
     if (item.type === 'image') {
-      mediaContent = `<img src="${item.url}" alt="图片 ${index + 1}" onclick="openLightbox(${index})" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+      mediaContent = `<img src="${item.url}" alt="图片 ${index + 1}" onclick="handleMediaClick(${index}, '${item.type}')" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
                       <div style="display:none; padding: 2rem; text-align: center; background: var(--card-bg); border-radius: 8px;">
                         <div style="font-size: 2rem; margin-bottom: 0.5rem;">🖼️</div>
                         <div>图片加载失败</div>
                         <button onclick="retryLoadMedia('${item.url}', ${index})" class="btn btn-sm btn-outline-primary mt-2">重试</button>
                       </div>`;
     } else {
-      mediaContent = `<video controls preload="metadata" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+      mediaContent = `<video controls preload="metadata" onclick="handleMediaClick(${index}, '${item.type}')" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
                        <source src="${item.url}" type="video/mp4">
                        您的浏览器不支持视频播放。
                      </video>
@@ -709,9 +709,9 @@ function displayMediaItems(mediaItems) {
       : `<div class="media-info">${item.type === 'image' ? '📸 图片' : '🎬 视频'}</div>`;
     
     return `
-      <div class="media-item" data-index="${index}" data-type="${item.type}" data-url="${item.url}">
+      <div class="media-item" data-index="${index}" data-type="${item.type}" data-url="${item.url}" onclick="handleMediaItemClick(event, ${index}, '${item.type}')">
         <div class="media-type">${item.type === 'image' ? '📸 图片' : '🎬 视频'} ${index + 1}</div>
-        <button class="media-download-btn" onclick="downloadMedia('${item.url}', ${index})" title="下载">
+        <button class="media-download-btn" onclick="event.stopPropagation(); downloadMedia('${item.url}', ${index})" title="下载">
           ⬇️
         </button>
         <div class="media-content">
@@ -719,10 +719,10 @@ function displayMediaItems(mediaItems) {
         </div>
         ${mediaInfo}
         <div class="media-actions mt-2">
-          <button class="btn btn-sm btn-outline-primary me-2" onclick="copySingleLink('${item.url}')" title="复制链接">
+          <button class="btn btn-sm btn-outline-primary me-2" onclick="event.stopPropagation(); copySingleLink('${item.url}')" title="复制链接">
             🔗 复制链接
           </button>
-          <button class="btn btn-sm btn-outline-success" onclick="downloadMedia('${item.url}', ${index})" title="下载文件">
+          <button class="btn btn-sm btn-outline-success" onclick="event.stopPropagation(); downloadMedia('${item.url}', ${index})" title="下载文件">
             ⬇️ 下载
           </button>
         </div>
@@ -1253,6 +1253,50 @@ function enableMobileFullscreen() {
     exitButton.onclick = disableMobileFullscreen;
     
     previewContainer.appendChild(exitButton);
+  }
+}
+
+// 处理媒体点击事件
+function handleMediaClick(index, type) {
+  // 如果是移动端
+  if (window.innerWidth <= 768) {
+    const previewContainer = document.getElementById("mediaPreview");
+    
+    // 如果当前不在全屏模式，进入全屏
+    if (!previewContainer.classList.contains('fullscreen-mobile')) {
+      enableMobileFullscreen();
+    } else {
+      // 如果已经在全屏模式，对于图片打开lightbox
+      if (type === 'image') {
+        openLightbox(index);
+      }
+      // 对于视频，让其正常播放（不做额外处理）
+    }
+  } else {
+    // 桌面端：直接打开lightbox（仅对图片）
+    if (type === 'image') {
+      openLightbox(index);
+    }
+  }
+}
+
+// 处理媒体项点击事件
+function handleMediaItemClick(event, index, type) {
+  // 防止在按钮上的点击触发
+  if (event.target.tagName === 'BUTTON' || event.target.closest('button')) {
+    return;
+  }
+  
+  // 如果是移动端且不在全屏模式
+  if (window.innerWidth <= 768) {
+    const previewContainer = document.getElementById("mediaPreview");
+    
+    if (!previewContainer.classList.contains('fullscreen-mobile')) {
+      // 进入全屏模式
+      enableMobileFullscreen();
+      event.preventDefault();
+      event.stopPropagation();
+    }
   }
 }
 
