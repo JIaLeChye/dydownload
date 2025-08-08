@@ -2,11 +2,147 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>抖音工具</title>
 
     <!-- Bootstrap CSS -->
     <link href="./bootstrap.min.css" rel="stylesheet" />
+    
+    <!-- Mobile optimization styles -->
+    <style>
+      /* Mobile-first responsive design */
+      @media (max-width: 768px) {
+        .container {
+          padding-left: 15px;
+          padding-right: 15px;
+        }
+        
+        h1 {
+          font-size: 1.8rem !important;
+          text-align: center;
+          margin-bottom: 1.5rem;
+        }
+        
+        .form-control {
+          font-size: 16px; /* Prevents zoom on iOS */
+          padding: 12px;
+        }
+        
+        #videoUrl {
+          min-height: 5rem !important;
+        }
+        
+        #result {
+          min-height: 6rem !important;
+          font-size: 14px;
+        }
+        
+        .btn {
+          width: 100%;
+          padding: 12px;
+          font-size: 16px;
+          margin-bottom: 10px;
+        }
+        
+        .btn-primary {
+          background-color: #007bff;
+          border-color: #007bff;
+        }
+        
+        /* Touch-friendly spacing */
+        .mb-3 {
+          margin-bottom: 1.5rem !important;
+        }
+        
+        .mt-3 {
+          margin-top: 1.5rem !important;
+        }
+        
+        .mt-4 {
+          margin-top: 2rem !important;
+        }
+      }
+      
+      /* Small mobile devices */
+      @media (max-width: 480px) {
+        .container {
+          padding-left: 10px;
+          padding-right: 10px;
+        }
+        
+        h1 {
+          font-size: 1.5rem !important;
+          line-height: 1.3;
+        }
+        
+        #videoUrl {
+          min-height: 4rem !important;
+        }
+        
+        #result {
+          min-height: 5rem !important;
+        }
+        
+        .btn {
+          padding: 14px 12px;
+        }
+      }
+      
+      /* Prevent horizontal scrolling */
+      body {
+        overflow-x: hidden;
+      }
+      
+      /* Better touch targets */
+      .btn, .form-control {
+        border-radius: 8px;
+      }
+      
+      /* Loading spinner optimization for mobile */
+      @media (max-width: 768px) {
+        .spinner-border-sm {
+          width: 1rem;
+          height: 1rem;
+        }
+      }
+      
+      /* Copy button success state */
+      .btn-success {
+        background-color: #28a745;
+        border-color: #28a745;
+      }
+      
+      /* Smooth animations */
+      .btn {
+        transition: all 0.2s ease-in-out;
+      }
+      
+      /* Better focus states for accessibility */
+      .form-control:focus {
+        box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+        border-color: #007bff;
+      }
+      
+      .btn:focus {
+        box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.5);
+      }
+      
+      /* Landscape mobile optimization */
+      @media (max-width: 768px) and (orientation: landscape) {
+        h1 {
+          font-size: 1.4rem !important;
+          margin-bottom: 1rem !important;
+        }
+        
+        #videoUrl {
+          min-height: 3rem !important;
+        }
+        
+        #result {
+          min-height: 4rem !important;
+        }
+      }
+    </style>
     <script>
       document.addEventListener("DOMContentLoaded", function () {
         document
@@ -24,9 +160,14 @@
             const resultDom = document.getElementById("result");
             const loadingDom = document.getElementById("loading");
             const copyDom = document.getElementById("autocopy");
+            const submitText = document.getElementById("submit-text");
+            
+            // Show loading state
             if (loadingDom) loadingDom.hidden = false;
             if (copyDom) copyDom.hidden = true;
             if (resultDom) resultDom.hidden = true;
+            if (submitText) submitText.textContent = "解析中...";
+            
             fetch("/workflow", {
               method: "POST",
               headers: {
@@ -39,24 +180,23 @@
                 if (resultDom) resultDom.hidden = false;
                 if (loadingDom) loadingDom.hidden = true;
                 if (copyDom) copyDom.hidden = false;
+                if (submitText) submitText.textContent = "解析";
+                
                 if (data.code === 0 && data.data.length > 0) {
-                  resultDom.innerHTML = data.data.join(",\n");
-                  // data.data.forEach((downloadUrl, index) => {
-                  //   setTimeout(() => {
-                  //     var a = document.createElement('a');
-                  //     a.href = downloadUrl;
-                  //     a.download = `downloaded_video_${index}`;
-                  //     document.body.appendChild(a);
-                  //     a.click();
-                  //     document.body.removeChild(a);
-                  //   }, index * 100);
-                  // });
+                  resultDom.value = data.data.join(",\n");
+                  // 移动端友好的反馈
+                  if (window.innerWidth <= 768) {
+                    resultDom.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  }
                 } else {
-                  alert("Failed to get download URLs");
+                  alert("解析失败，请检查链接是否正确");
                 }
               })
               .catch((error) => {
                 console.error("There was an error!", error);
+                if (loadingDom) loadingDom.hidden = true;
+                if (submitText) submitText.textContent = "解析";
+                alert("网络错误，请稍后重试");
               });
           });
       });
@@ -81,70 +221,86 @@
       function copyToClipboard() {
         var resultDom = document.getElementById("result");
         var textToCopy = resultDom.value;
-        const isHaveClipboard = navigator.clipboard?.writeText
-        const copyFuc = navigator.clipboard?.writeText || copyTextToClipboard 
-        let successCopy = false;
-        if (isHaveClipboard) {
+        
+        // 优先使用现代 clipboard API
+        if (navigator.clipboard && window.isSecureContext) {
           navigator.clipboard.writeText(textToCopy)
-          .then(function () {
-            successCopy = true
-          })
-          .catch(function (error) {
-            successCopy = false
-          });
+            .then(function () {
+              // 移动端友好的成功反馈
+              const copyButton = document.getElementById("autocopy");
+              const originalText = copyButton.textContent;
+              copyButton.textContent = "✅ 复制成功";
+              copyButton.classList.add("btn-success");
+              copyButton.classList.remove("btn-primary");
+              
+              setTimeout(() => {
+                copyButton.textContent = originalText;
+                copyButton.classList.add("btn-primary");
+                copyButton.classList.remove("btn-success");
+              }, 2000);
+            })
+            .catch(function (error) {
+              fallbackCopyTextToClipboard(textToCopy);
+            });
+        } else {
+          fallbackCopyTextToClipboard(textToCopy);
         }
-        if (!successCopy) {
-          copyTextToClipboard(textToCopy).then(function () {
-            alert('复制成功')
-          })
-          .catch(function (error) {
-            alert('复制失败')
-          });
-        }
+      }
+
+      function fallbackCopyTextToClipboard(text) {
+        copyTextToClipboard(text).then(function () {
+          alert('复制成功！可以在浏览器或其他应用中粘贴下载链接')
+        })
+        .catch(function (error) {
+          alert('复制失败，请手动选择文本复制')
+        });
       }
     </script>
   </head>
   <body>
     <div class="container mt-3">
-      <div class="row justify-content-md-center">
-        <div class="col-md-6">
-          <h1 class="mb-3 fs-1 align-baseline text-capitalize fst-italic">抖音工具</h1>
-          <form id="downloadForm" class="flex">
+      <div class="row justify-content-center">
+        <div class="col-12 col-md-8 col-lg-6">
+          <h1 class="mb-3 fs-1 text-center fst-italic">抖音工具</h1>
+          <form id="downloadForm" class="d-flex flex-column">
             <div class="form-group mb-3">
               <textarea
-                type="textarea"
                 class="form-control"
                 id="videoUrl"
-                style="min-height: 6rem;"
+                style="min-height: 6rem; resize: vertical;"
                 placeholder="粘贴抖音分享地址（只能粘贴一条）"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+                spellcheck="false"
               ></textarea>
             </div>
-            <button id="submit" class="btn btn-primary">
+            <button type="submit" id="submit" class="btn btn-primary btn-lg">
               <span
                 id="loading"
-                class="spinner-border spinner-border-sm"
+                class="spinner-border spinner-border-sm me-2"
                 hidden
                 aria-hidden="true"
               ></span>
-              解析
+              <span id="submit-text">解析</span>
             </button>
           </form>
           <textarea
-            class="result textarea form-control mt-5"
+            class="form-control mt-4"
             id="result"
             placeholder="解析后的下载地址"
-            disabled
+            readonly
             hidden
-            style="min-height: 8rem;"
+            style="min-height: 8rem; resize: vertical;"
           ></textarea>
           <button
             onclick="copyToClipboard()"
             id="autocopy"
-            class="btn btn-primary mt-3"
-            data-clipboard-target="#foo"
+            class="btn btn-primary btn-lg mt-3"
+            data-clipboard-target="#result"
             hidden
           >
-            一键复制
+            📋 一键复制
           </button>
         </div>
       </div>
