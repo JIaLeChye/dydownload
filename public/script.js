@@ -27,6 +27,16 @@ themeToggle.addEventListener('click', function() {
 });
 
 document.addEventListener("DOMContentLoaded", function () {
+  // 添加测试模式 - 直接显示原始链接区域进行测试
+  const testMode = false; // 设置为 true 来启用测试模式
+  
+  if (testMode) {
+    setTimeout(() => {
+      console.log('测试模式：强制显示原始链接区域');
+      forceShowRawLinks();
+    }, 1000);
+  }
+  
   document
     .getElementById("submit")
     .addEventListener("click", function (e) {
@@ -47,8 +57,32 @@ document.addEventListener("DOMContentLoaded", function () {
       // Show loading state
       if (loadingDom) loadingDom.hidden = false;
       if (copyDom) copyDom.hidden = true;
-      if (resultDom) resultDom.hidden = true;
+      // 不要隐藏 resultDom，因为它是原始链接文本框
+      // if (resultDom) resultDom.hidden = true;
       if (submitText) submitText.textContent = "解析中...";
+      
+      // 临时添加模拟数据进行测试
+      const simulateSuccess = false; // 设置为 true 来使用模拟数据
+      
+      if (simulateSuccess) {
+        console.log('使用模拟数据进行测试');
+        
+        // 模拟成功的API响应
+        const mockData = {
+          code: 0,
+          data: [
+            "https://example.com/video1.mp4",
+            "https://example.com/image1.jpg",
+            "https://example.com/video2.mp4"
+          ]
+        };
+        
+        // 模拟网络延迟
+        setTimeout(() => {
+          handleApiResponse(mockData);
+        }, 1000);
+        return; // 跳过实际的网络请求
+      }
       
       fetch("/workflow", {
         method: "POST",
@@ -57,42 +91,364 @@ document.addEventListener("DOMContentLoaded", function () {
         },
         body: JSON.stringify(requestData),
       })
-        .then((response) => response.json())
-        .then((data) => {
-          if (loadingDom) loadingDom.hidden = true;
-          if (submitText) submitText.textContent = "解析";
-          
-          if (data.code === 0 && data.data.length > 0) {
-            // 填充原始链接区域
-            const resultDom = document.getElementById("result");
-            if (resultDom) {
-              resultDom.value = data.data.join(",\n");
-            }
-            
-            // 显示原始链接区域和复制按钮
-            const rawLinksSection = document.getElementById("rawLinks");
-            if (rawLinksSection) rawLinksSection.hidden = false;
-            if (copyDom) copyDom.hidden = false;
-            
-            // 显示媒体预览
-            displayMediaPreview(data.data);
-            
-            // 移动端友好的反馈
-            if (window.innerWidth <= 768) {
-              document.getElementById("mediaPreview").scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-          } else {
-            alert("解析失败，请检查链接是否正确");
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
           }
+          return response.json();
+        })
+        .then((data) => {
+          handleApiResponse(data);
         })
         .catch((error) => {
           console.error("There was an error!", error);
           if (loadingDom) loadingDom.hidden = true;
           if (submitText) submitText.textContent = "解析";
           alert("网络错误，请稍后重试");
+          // 重置界面
+          resetInterface();
         });
     });
 });
+
+// 处理API响应的函数
+function handleApiResponse(data) {
+  const loadingDom = document.getElementById("loading");
+  const submitText = document.getElementById("submit-text");
+  const copyDom = document.getElementById("autocopy");
+  
+  if (loadingDom) loadingDom.hidden = true;
+  if (submitText) submitText.textContent = "解析";
+  
+  console.log('API Response:', data);
+  
+  if (data.code === 0 && data.data) {
+    let allUrls = [];
+    let urlsWithType = []; // 新增：带类型信息的URL数组
+    
+    // 处理视频URL
+    if (data.data.video && Array.isArray(data.data.video)) {
+      data.data.video.forEach(url => {
+        allUrls.push(url);
+        urlsWithType.push({ url: url, type: 'video' });
+      });
+    }
+    
+    // 处理图片URL  
+    if (data.data.img && Array.isArray(data.data.img)) {
+      data.data.img.forEach(url => {
+        allUrls.push(url);
+        urlsWithType.push({ url: url, type: 'image' });
+      });
+    }
+    
+    // 兼容旧格式 - 如果data.data是数组
+    if (Array.isArray(data.data)) {
+      allUrls = data.data;
+      // 对于旧格式，我们需要猜测类型
+      urlsWithType = data.data.map(url => ({
+        url: url,
+        type: detectLinkType(url)
+      }));
+    }
+    
+    console.log('All URLs:', allUrls);
+    
+    if (allUrls.length > 0) {
+      // 填充原始链接区域（保留原有逻辑用于复制功能）
+      const resultDom = document.getElementById("result");
+      if (resultDom) {
+        resultDom.value = allUrls.join(",\n");
+      }
+      
+      // 生成分开的链接列表（使用类型信息）
+      generateLinksListWithTypes(urlsWithType);
+      
+      // 显示原始链接区域和复制按钮
+      const rawLinksSection = document.getElementById("rawLinks");
+      if (rawLinksSection) {
+        rawLinksSection.hidden = false;
+        // 确保样式正确应用
+        rawLinksSection.style.display = 'block';
+        console.log('Raw links section shown');
+      } else {
+        console.error('Raw links section not found!');
+      }
+      if (copyDom) copyDom.hidden = false;
+      
+      // 显示媒体预览
+      displayMediaPreview(allUrls);
+      
+      // 移动端友好的反馈
+      if (window.innerWidth <= 768) {
+        document.getElementById("mediaPreview").scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    } else {
+      console.error('No URLs found in response');
+      alert("解析成功但没有找到媒体链接");
+      resetInterface();
+    }
+  } else {
+    console.error('Parse failed:', data);
+    alert("解析失败，请检查链接是否正确");
+    // 重置界面
+    resetInterface();
+  }
+}
+
+// 使用明确类型信息生成链接列表
+function generateLinksListWithTypes(urlsWithType) {
+  const linksList = document.getElementById('linksList');
+  if (!linksList) return;
+  
+  linksList.innerHTML = '';
+  
+  urlsWithType.forEach((item, index) => {
+    const { url, type } = item;
+    const isVideo = type === 'video';
+    const isImage = type === 'image';
+    
+    const linkItem = document.createElement('div');
+    linkItem.className = 'link-item';
+    
+    linkItem.innerHTML = `
+      <span class="link-type-badge ${isVideo ? 'link-type-video' : 'link-type-image'}" id="badge-${index}">
+        ${isVideo ? '🎬 视频' : '📸 图片'} ${index + 1}
+      </span>
+      <a href="${url}" target="_blank" class="link-url" title="点击在新标签页中打开">
+        ${url}
+      </a>
+      <div class="link-actions">
+        <button class="btn btn-sm btn-outline-primary" onclick="copySingleLink('${url}')" title="复制链接">
+          📋
+        </button>
+        <button class="btn btn-sm btn-outline-success" onclick="downloadFromUrl('${url}', ${index})" title="下载">
+          ⬇️
+        </button>
+      </div>
+    `;
+    
+    linksList.appendChild(linkItem);
+    
+    // 如果初始判断不确定，可以进行异步验证
+    if (type === 'video' && detectLinkType(url) !== 'video') {
+      verifyLinkType(url, index);
+    }
+  });
+  
+  console.log('Links with types populated successfully');
+}
+
+// 生成分开的链接列表（保留原函数作为备用）
+function generateLinksList(urls) {
+  const linksList = document.getElementById('linksList');
+  if (!linksList) return;
+  
+  linksList.innerHTML = '';
+  
+  urls.forEach((url, index) => {
+    // 改进的文件类型判断逻辑
+    const linkType = detectLinkType(url);
+    const isVideo = linkType === 'video';
+    const isImage = linkType === 'image';
+    
+    const linkItem = document.createElement('div');
+    linkItem.className = 'link-item';
+    
+    // 生成唯一的链接ID
+    const linkId = `link-${index}`;
+    
+    linkItem.innerHTML = `
+      <span class="link-type-badge ${isVideo ? 'link-type-video' : 'link-type-image'}" id="badge-${index}">
+        ${isVideo ? '🎬 视频' : '📸 图片'} ${index + 1}
+      </span>
+      <a href="${url}" target="_blank" class="link-url" title="点击在新标签页中打开">
+        ${url}
+      </a>
+      <div class="link-actions">
+        <button class="btn btn-sm btn-outline-primary" onclick="copySingleLink('${url}')" title="复制链接">
+          📋
+        </button>
+        <button class="btn btn-sm btn-outline-success" onclick="downloadFromUrl('${url}', ${index})" title="下载">
+          ⬇️
+        </button>
+      </div>
+    `;
+    
+    linksList.appendChild(linkItem);
+    
+    // 异步验证文件类型
+    verifyLinkType(url, index);
+  });
+  
+  console.log('Links populated successfully');
+}
+
+// 改进的链接类型检测函数
+function detectLinkType(url) {
+  const urlLower = url.toLowerCase();
+  
+  // 明确的图片扩展名
+  const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
+  const hasImageExtension = imageExtensions.some(ext => urlLower.includes(ext));
+  
+  // 明确的视频扩展名
+  const videoExtensions = ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m3u8'];
+  const hasVideoExtension = videoExtensions.some(ext => urlLower.includes(ext));
+  
+  // 如果有明确的扩展名，直接返回
+  if (hasImageExtension) return 'image';
+  if (hasVideoExtension) return 'video';
+  
+  // 基于URL路径和参数的判断
+  if (urlLower.includes('/image/') || 
+      urlLower.includes('img') || 
+      urlLower.includes('photo') || 
+      urlLower.includes('pic')) {
+    return 'image';
+  }
+  
+  if (urlLower.includes('/video/') || 
+      urlLower.includes('aweme') || 
+      urlLower.includes('play') || 
+      urlLower.includes('stream')) {
+    return 'video';
+  }
+  
+  // 基于域名的判断
+  if (urlLower.includes('p3-sign.douyinpic.com') || 
+      urlLower.includes('p6-sign.douyinpic.com') ||
+      urlLower.includes('p9-sign.douyinpic.com') ||
+      urlLower.includes('douyinpic.com')) {
+    return 'image';
+  }
+  
+  if (urlLower.includes('aweme.snssdk.com') || 
+      urlLower.includes('v.douyin.com') ||
+      urlLower.includes('aweme') ||
+      urlLower.includes('douyinvod.com')) {
+    return 'video';
+  }
+  
+  // 基于HTTP响应头的判断（异步，作为备选）
+  // 这里我们先返回一个默认值，后面可以通过HEAD请求来确认
+  
+  // 如果都无法判断，默认根据索引位置和常见模式
+  // 抖音通常先返回视频链接，后返回图片链接
+  return 'video'; // 默认为视频
+}
+
+// 异步验证链接类型
+async function verifyLinkType(url, index) {
+  try {
+    // 使用HEAD请求获取Content-Type，避免下载整个文件
+    const response = await fetch(url, {
+      method: 'HEAD',
+      mode: 'cors'
+    });
+    
+    if (response.ok) {
+      const contentType = response.headers.get('content-type') || '';
+      let actualType = 'video'; // 默认
+      
+      if (contentType.startsWith('image/')) {
+        actualType = 'image';
+      } else if (contentType.startsWith('video/')) {
+        actualType = 'video';
+      }
+      
+      // 更新标签显示
+      updateLinkTypeBadge(index, actualType);
+    }
+  } catch (error) {
+    // 如果HEAD请求失败，尝试其他方法
+    console.log(`无法验证链接 ${index + 1} 的类型:`, error);
+    
+    // 可以尝试通过创建Image对象来检测图片
+    if (!url.includes('.mp4') && !url.includes('video')) {
+      const img = new Image();
+      img.onload = () => {
+        updateLinkTypeBadge(index, 'image');
+      };
+      img.onerror = () => {
+        // 如果不是图片，保持为视频
+      };
+      img.src = url;
+    }
+  }
+}
+
+// 更新链接类型标签
+function updateLinkTypeBadge(index, actualType) {
+  const badge = document.getElementById(`badge-${index}`);
+  if (!badge) return;
+  
+  const isVideo = actualType === 'video';
+  const isImage = actualType === 'image';
+  
+  // 更新样式类
+  badge.className = `link-type-badge ${isVideo ? 'link-type-video' : 'link-type-image'}`;
+  
+  // 更新文本内容
+  badge.textContent = `${isVideo ? '🎬 视频' : '📸 图片'} ${index + 1}`;
+  
+  console.log(`链接 ${index + 1} 类型已更新为: ${actualType}`);
+}
+
+// 复制单个链接到剪贴板
+function copySingleLink(url) {
+  navigator.clipboard.writeText(url).then(() => {
+    showToast('📋 链接已复制', 'success');
+    console.log('Link copied:', url);
+  }).catch(err => {
+    // 备用复制方法
+    const tempInput = document.createElement('input');
+    tempInput.value = url;
+    document.body.appendChild(tempInput);
+    tempInput.select();
+    document.execCommand('copy');
+    document.body.removeChild(tempInput);
+    showToast('📋 链接已复制', 'success');
+    console.log('Link copied (fallback):', url);
+  });
+}
+
+// 从URL下载文件
+function downloadFromUrl(url, index) {
+  downloadMedia(url, index);
+}
+
+// 重置界面函数
+function resetInterface() {
+  const rawLinksSection = document.getElementById("rawLinks");
+  const copyDom = document.getElementById("autocopy");
+  const resultDom = document.getElementById("result");
+  const mediaPreview = document.getElementById("mediaPreview");
+  const linksList = document.getElementById("linksList");
+  
+  if (rawLinksSection) {
+    rawLinksSection.hidden = true;
+    rawLinksSection.style.display = 'none';
+  }
+  if (copyDom) copyDom.hidden = true;
+  if (resultDom) resultDom.value = "";
+  if (mediaPreview) mediaPreview.style.display = 'none';
+  if (linksList) linksList.innerHTML = '';
+  
+  // 重置原始链接内容区域
+  const rawLinksContent = document.getElementById('rawLinksContent');
+  const rawLinksToggleText = document.getElementById('rawLinksToggleText');
+  if (rawLinksContent) {
+    rawLinksContent.style.display = 'none';
+    rawLinksContent.classList.remove('expanded');
+  }
+  if (rawLinksToggleText) {
+    rawLinksToggleText.textContent = '展开';
+  }
+  
+  // 重置媒体项目
+  currentMediaItems = [];
+}
 
 function copyTextToClipboard(textToCopy) {
   return new Promise((resolve, reject) => {
@@ -121,18 +477,8 @@ function copyToClipboard() {
   if (navigator.clipboard && window.isSecureContext) {
     navigator.clipboard.writeText(textToCopy)
       .then(function () {
-        // 移动端友好的成功反馈
-        const copyButton = document.getElementById("autocopy");
-        const originalText = copyButton.textContent;
-        copyButton.textContent = "✅ 复制成功";
-        copyButton.classList.remove("btn-primary");
-        copyButton.classList.add("btn-success");
-        
-        setTimeout(() => {
-          copyButton.textContent = originalText;
-          copyButton.classList.remove("btn-success");
-          copyButton.classList.add("btn-primary");
-        }, 2000);
+        showToast('📋 所有链接已复制', 'success');
+        console.log('Links copied to clipboard');
       })
       .catch(function (error) {
         fallbackCopyTextToClipboard(textToCopy);
@@ -144,10 +490,11 @@ function copyToClipboard() {
 
 function fallbackCopyTextToClipboard(text) {
   copyTextToClipboard(text).then(function () {
-    alert('复制成功！可以在浏览器或其他应用中粘贴下载链接')
+    showToast('📋 所有链接已复制', 'success');
+    console.log('Links copied to clipboard (fallback)');
   })
   .catch(function (error) {
-    alert('复制失败，请手动选择文本复制')
+    showToast('❌ 复制失败，请手动选择文本复制', 'error');
   });
 }
 
@@ -322,17 +669,12 @@ function checkMediaType(url, index) {
 
 function displayMediaItems(mediaItems) {
   const mediaContainer = document.getElementById("mediaContainer");
-  const bulkActions = document.getElementById("bulkActions");
   mediaContainer.className = `media-container ${currentViewMode}-view`;
   
   if (mediaItems.length === 0) {
     mediaContainer.innerHTML = '<div class="no-media">📭 没有找到媒体内容</div>';
-    if (bulkActions) bulkActions.style.display = 'none';
     return;
   }
-  
-  // 显示批量操作按钮
-  if (bulkActions) bulkActions.style.display = 'flex';
   
   const itemsHtml = mediaItems.map((item, index) => {
     let mediaContent;
@@ -371,7 +713,7 @@ function displayMediaItems(mediaItems) {
         </div>
         ${mediaInfo}
         <div class="media-actions mt-2">
-          <button class="btn btn-sm btn-outline-primary me-2" onclick="copyToClipboardText('${item.url}')" title="复制链接">
+          <button class="btn btn-sm btn-outline-primary me-2" onclick="copySingleLink('${item.url}')" title="复制链接">
             🔗 复制链接
           </button>
           <button class="btn btn-sm btn-outline-success" onclick="downloadMedia('${item.url}', ${index})" title="下载文件">
@@ -413,20 +755,6 @@ function retryLoadMedia(url, index) {
       }
     }, 500);
   });
-}
-
-function copyToClipboardText(text) {
-  if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(text)
-      .then(() => {
-        showToast('✅ 链接已复制', 'success');
-      })
-      .catch(() => {
-        fallbackCopyTextToClipboard(text);
-      });
-  } else {
-    fallbackCopyTextToClipboard(text);
-  }
 }
 
 function toggleView(viewMode) {
@@ -687,17 +1015,39 @@ function hideBulkDownloadProgress() {
 }
 
 function showToast(message, type = 'success') {
+  // 创建toast容器（如果不存在）
+  let toastContainer = document.getElementById('toast-container');
+  if (!toastContainer) {
+    toastContainer = document.createElement('div');
+    toastContainer.id = 'toast-container';
+    toastContainer.style.cssText = `
+      position: fixed;
+      top: 80px;
+      right: 20px;
+      z-index: 1500;
+      pointer-events: none;
+    `;
+    document.body.appendChild(toastContainer);
+  }
+  
   const toast = document.createElement('div');
   toast.className = 'toast-notification';
   toast.textContent = message;
   
+  // 设置不同类型的颜色
   if (type === 'error') {
     toast.style.background = '#dc3545';
   } else if (type === 'info') {
     toast.style.background = '#17a2b8';
+  } else if (type === 'warning') {
+    toast.style.background = '#ffc107';
+    toast.style.color = '#212529';
+  } else {
+    toast.style.background = '#28a745';
   }
   
-  document.body.appendChild(toast);
+  // 添加到容器顶部
+  toastContainer.insertBefore(toast, toastContainer.firstChild);
   
   // 触发动画
   setTimeout(() => {
@@ -708,8 +1058,12 @@ function showToast(message, type = 'success') {
   setTimeout(() => {
     toast.classList.remove('show');
     setTimeout(() => {
-      if (document.body.contains(toast)) {
-        document.body.removeChild(toast);
+      if (toastContainer.contains(toast)) {
+        toastContainer.removeChild(toast);
+      }
+      // 如果容器为空，也移除容器
+      if (toastContainer.children.length === 0 && document.body.contains(toastContainer)) {
+        document.body.removeChild(toastContainer);
       }
     }, 300);
   }, 3000);
@@ -820,13 +1174,61 @@ function toggleRawLinks() {
   const content = document.getElementById('rawLinksContent');
   const toggleText = document.getElementById('rawLinksToggleText');
   
+  console.log('Toggle raw links clicked, content:', content); // 调试日志
+  
+  if (!content || !toggleText) {
+    console.error('Raw links elements not found');
+    return;
+  }
+  
   if (content.style.display === 'none') {
     content.style.display = 'block';
     content.classList.add('expanded');
     toggleText.textContent = '收起';
+    console.log('Raw links expanded'); // 调试日志
   } else {
     content.style.display = 'none';
     content.classList.remove('expanded');
     toggleText.textContent = '展开';
+    console.log('Raw links collapsed'); // 调试日志
   }
 }
+
+// 调试函数 - 强制显示原始链接
+function forceShowRawLinks() {
+  const rawLinksSection = document.getElementById("rawLinks");
+  const resultDom = document.getElementById("result");
+  
+  if (rawLinksSection) {
+    rawLinksSection.hidden = false;
+    rawLinksSection.style.display = 'block';
+    console.log('Force showing raw links section');
+  }
+  
+  if (resultDom) {
+    resultDom.value = "测试链接1\n测试链接2\n测试链接3";
+    console.log('Test links populated');
+  }
+  
+  // 生成测试链接列表
+  const testUrls = [
+    { url: "https://example.com/video1.mp4", type: "video" },
+    { url: "https://example.com/image1.jpg", type: "image" },
+    { url: "https://example.com/video2.mp4", type: "video" }
+  ];
+  generateLinksListWithTypes(testUrls);
+  
+  // 展开链接内容
+  const rawLinksContent = document.getElementById('rawLinksContent');
+  const rawLinksToggleText = document.getElementById('rawLinksToggleText');
+  if (rawLinksContent) {
+    rawLinksContent.style.display = 'block';
+    rawLinksContent.classList.add('expanded');
+  }
+  if (rawLinksToggleText) {
+    rawLinksToggleText.textContent = '收起';
+  }
+}
+
+// 在控制台中可以调用: forceShowRawLinks()
+console.log('调试提示: 在控制台中输入 forceShowRawLinks() 来强制显示原始链接部分');
