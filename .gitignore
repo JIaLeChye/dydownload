@@ -1,0 +1,7 @@
+node_modules
+.vscode
+media
+test.js
+dist/**
+.env
+pnpm-lock.yaml
