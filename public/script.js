@@ -59,13 +59,20 @@ document.addEventListener("DOMContentLoaded", function () {
       })
         .then((response) => response.json())
         .then((data) => {
-          if (resultDom) resultDom.hidden = false;
           if (loadingDom) loadingDom.hidden = true;
-          if (copyDom) copyDom.hidden = false;
           if (submitText) submitText.textContent = "解析";
           
           if (data.code === 0 && data.data.length > 0) {
-            resultDom.value = data.data.join(",\n");
+            // 填充原始链接区域
+            const resultDom = document.getElementById("result");
+            if (resultDom) {
+              resultDom.value = data.data.join(",\n");
+            }
+            
+            // 显示原始链接区域和复制按钮
+            const rawLinksSection = document.getElementById("rawLinks");
+            if (rawLinksSection) rawLinksSection.hidden = false;
+            if (copyDom) copyDom.hidden = false;
             
             // 显示媒体预览
             displayMediaPreview(data.data);
@@ -315,12 +322,17 @@ function checkMediaType(url, index) {
 
 function displayMediaItems(mediaItems) {
   const mediaContainer = document.getElementById("mediaContainer");
+  const bulkActions = document.getElementById("bulkActions");
   mediaContainer.className = `media-container ${currentViewMode}-view`;
   
   if (mediaItems.length === 0) {
     mediaContainer.innerHTML = '<div class="no-media">📭 没有找到媒体内容</div>';
+    if (bulkActions) bulkActions.style.display = 'none';
     return;
   }
+  
+  // 显示批量操作按钮
+  if (bulkActions) bulkActions.style.display = 'flex';
   
   const itemsHtml = mediaItems.map((item, index) => {
     let mediaContent;
@@ -349,7 +361,7 @@ function displayMediaItems(mediaItems) {
       : `<div class="media-info">${item.type === 'image' ? '📸 图片' : '🎬 视频'}</div>`;
     
     return `
-      <div class="media-item" data-index="${index}">
+      <div class="media-item" data-index="${index}" data-type="${item.type}" data-url="${item.url}">
         <div class="media-type">${item.type === 'image' ? '📸 图片' : '🎬 视频'} ${index + 1}</div>
         <button class="media-download-btn" onclick="downloadMedia('${item.url}', ${index})" title="下载">
           ⬇️
@@ -358,8 +370,13 @@ function displayMediaItems(mediaItems) {
           ${mediaContent}
         </div>
         ${mediaInfo}
-        <div class="download-link" title="点击复制链接" onclick="copyToClipboardText('${item.url}')" style="cursor: pointer;">
-          ${item.url.length > 50 ? item.url.substring(0, 50) + '...' : item.url}
+        <div class="media-actions mt-2">
+          <button class="btn btn-sm btn-outline-primary me-2" onclick="copyToClipboardText('${item.url}')" title="复制链接">
+            🔗 复制链接
+          </button>
+          <button class="btn btn-sm btn-outline-success" onclick="downloadMedia('${item.url}', ${index})" title="下载文件">
+            ⬇️ 下载
+          </button>
         </div>
       </div>
     `;
@@ -446,23 +463,226 @@ function downloadMedia(url, index) {
     const mediaItem = document.querySelector(`[data-index="${index}"]`);
     const isImage = mediaItem && mediaItem.querySelector('img');
     const filePrefix = isImage ? 'douyin_image' : 'douyin_video';
-    
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${filePrefix}_${timestamp}_${index + 1}${extension}`;
-    link.target = '_blank';
-    link.style.display = 'none';
-    
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const fileName = `${filePrefix}_${timestamp}_${index + 1}${extension}`;
     
     // 显示下载开始的提示
     showToast('📥 开始下载...', 'info');
     
+    // 使用 fetch 下载文件
+    fetch(url)
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('网络响应错误');
+        }
+        return response.blob();
+      })
+      .then(blob => {
+        // 创建下载链接
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = fileName;
+        link.style.display = 'none';
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // 清理内存
+        window.URL.revokeObjectURL(downloadUrl);
+        
+        showToast('✅ 下载完成', 'success');
+      })
+      .catch(error => {
+        console.error('Download error:', error);
+        showToast('❌ 下载失败，尝试直接打开链接', 'error');
+        
+        // 如果下载失败，则回退到直接打开链接
+        fallbackDownload(url, fileName);
+      });
+    
   } catch (error) {
     console.error('Download error:', error);
     showToast('❌ 下载失败', 'error');
+  }
+}
+
+function fallbackDownload(url, fileName) {
+  // 回退方案：直接创建下载链接
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.target = '_blank';
+  link.style.display = 'none';
+  
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+// 下载进度状态
+let downloadProgress = {
+  total: 0,
+  completed: 0,
+  inProgress: false
+};
+
+// 批量下载所有媒体
+async function downloadAllMedia() {
+  if (!currentMediaItems || currentMediaItems.length === 0) {
+    showToast('❌ 没有可下载的媒体文件', 'error');
+    return;
+  }
+  
+  if (downloadProgress.inProgress) {
+    showToast('⏳ 下载任务进行中，请等待完成', 'warning');
+    return;
+  }
+  
+  const totalItems = currentMediaItems.length;
+  downloadProgress = { total: totalItems, completed: 0, inProgress: true };
+  
+  showToast(`🚀 开始批量下载 ${totalItems} 个文件...`, 'info');
+  updateBulkDownloadProgress();
+  
+  for (let i = 0; i < currentMediaItems.length; i++) {
+    try {
+      downloadMedia(currentMediaItems[i].url, i);
+      downloadProgress.completed++;
+      updateBulkDownloadProgress();
+      
+      // 每次下载后稍微延迟，避免过于频繁的请求
+      await new Promise(resolve => setTimeout(resolve, 800));
+    } catch (error) {
+      console.error(`下载第 ${i + 1} 个文件失败:`, error);
+    }
+  }
+  
+  downloadProgress.inProgress = false;
+  showToast(`🎉 批量下载完成！`, 'success');
+  hideBulkDownloadProgress();
+}
+
+// 批量下载图片
+async function downloadImages() {
+  if (!currentMediaItems || currentMediaItems.length === 0) {
+    showToast('❌ 没有可下载的媒体文件', 'error');
+    return;
+  }
+  
+  const imageItems = currentMediaItems.filter(item => item.type === 'image');
+  
+  if (imageItems.length === 0) {
+    showToast('❌ 没有找到图片文件', 'error');
+    return;
+  }
+  
+  if (downloadProgress.inProgress) {
+    showToast('⏳ 下载任务进行中，请等待完成', 'warning');
+    return;
+  }
+  
+  const totalItems = imageItems.length;
+  downloadProgress = { total: totalItems, completed: 0, inProgress: true };
+  
+  showToast(`🖼️ 开始下载 ${totalItems} 张图片...`, 'info');
+  updateBulkDownloadProgress();
+  
+  for (let i = 0; i < imageItems.length; i++) {
+    try {
+      const originalIndex = currentMediaItems.indexOf(imageItems[i]);
+      downloadMedia(imageItems[i].url, originalIndex);
+      downloadProgress.completed++;
+      updateBulkDownloadProgress();
+      
+      // 每次下载后稍微延迟
+      await new Promise(resolve => setTimeout(resolve, 600));
+    } catch (error) {
+      console.error(`下载第 ${i + 1} 张图片失败:`, error);
+    }
+  }
+  
+  downloadProgress.inProgress = false;
+  showToast(`🎉 图片下载完成！`, 'success');
+  hideBulkDownloadProgress();
+}
+
+// 批量下载视频
+async function downloadVideos() {
+  if (!currentMediaItems || currentMediaItems.length === 0) {
+    showToast('❌ 没有可下载的媒体文件', 'error');
+    return;
+  }
+  
+  const videoItems = currentMediaItems.filter(item => item.type === 'video');
+  
+  if (videoItems.length === 0) {
+    showToast('❌ 没有找到视频文件', 'error');
+    return;
+  }
+  
+  if (downloadProgress.inProgress) {
+    showToast('⏳ 下载任务进行中，请等待完成', 'warning');
+    return;
+  }
+  
+  const totalItems = videoItems.length;
+  downloadProgress = { total: totalItems, completed: 0, inProgress: true };
+  
+  showToast(`🎬 开始下载 ${totalItems} 个视频...`, 'info');
+  updateBulkDownloadProgress();
+  
+  for (let i = 0; i < videoItems.length; i++) {
+    try {
+      const originalIndex = currentMediaItems.indexOf(videoItems[i]);
+      downloadMedia(videoItems[i].url, originalIndex);
+      downloadProgress.completed++;
+      updateBulkDownloadProgress();
+      
+      // 视频文件更大，延迟稍长
+      await new Promise(resolve => setTimeout(resolve, 1200));
+    } catch (error) {
+      console.error(`下载第 ${i + 1} 个视频失败:`, error);
+    }
+  }
+  
+  downloadProgress.inProgress = false;
+  showToast(`🎉 视频下载完成！`, 'success');
+  hideBulkDownloadProgress();
+}
+
+// 更新批量下载进度
+function updateBulkDownloadProgress() {
+  const bulkActions = document.getElementById('bulkActions');
+  if (!bulkActions || !downloadProgress.inProgress) return;
+  
+  let progressDiv = document.getElementById('downloadProgress');
+  if (!progressDiv) {
+    progressDiv = document.createElement('div');
+    progressDiv.id = 'downloadProgress';
+    progressDiv.className = 'download-progress mt-3';
+    bulkActions.appendChild(progressDiv);
+  }
+  
+  const percentage = Math.round((downloadProgress.completed / downloadProgress.total) * 100);
+  progressDiv.innerHTML = `
+    <div class="progress mb-2" style="height: 8px;">
+      <div class="progress-bar bg-primary progress-bar-striped progress-bar-animated" 
+           style="width: ${percentage}%"></div>
+    </div>
+    <div class="text-center">
+      <small class="text-muted">下载进度: ${downloadProgress.completed}/${downloadProgress.total} (${percentage}%)</small>
+    </div>
+  `;
+}
+
+// 隐藏批量下载进度
+function hideBulkDownloadProgress() {
+  const progressDiv = document.getElementById('downloadProgress');
+  if (progressDiv) {
+    setTimeout(() => {
+      progressDiv.remove();
+    }, 3000); // 3秒后移除进度条
   }
 }
 
@@ -594,3 +814,19 @@ document.addEventListener("DOMContentLoaded", function() {
     listBtn.classList.add('active');
   }
 });
+
+// Raw links toggle functionality
+function toggleRawLinks() {
+  const content = document.getElementById('rawLinksContent');
+  const toggleText = document.getElementById('rawLinksToggleText');
+  
+  if (content.style.display === 'none') {
+    content.style.display = 'block';
+    content.classList.add('expanded');
+    toggleText.textContent = '收起';
+  } else {
+    content.style.display = 'none';
+    content.classList.remove('expanded');
+    toggleText.textContent = '展开';
+  }
+}

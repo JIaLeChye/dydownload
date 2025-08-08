@@ -374,6 +374,43 @@ body {
   margin-bottom: 0.5rem;
 }
 
+/* Media actions styles */
+.media-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.media-actions .btn {
+  font-size: 0.8rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  flex: 1;
+  min-width: 100px;
+}
+
+.media-actions .btn-outline-primary {
+  border-color: var(--btn-primary-border);
+  color: var(--btn-primary-bg);
+}
+
+.media-actions .btn-outline-primary:hover {
+  background-color: var(--btn-primary-bg);
+  border-color: var(--btn-primary-border);
+  color: white;
+}
+
+.media-actions .btn-outline-success {
+  border-color: var(--btn-success-border);
+  color: var(--btn-success-bg);
+}
+
+.media-actions .btn-outline-success:hover {
+  background-color: var(--btn-success-bg);
+  border-color: var(--btn-success-border);
+  color: white;
+}
+
 .download-link {
   word-break: break-all;
   font-family: monospace;
@@ -407,6 +444,21 @@ body {
   .btn-group .btn {
     font-size: 0.8rem;
     padding: 0.4rem 0.8rem;
+  }
+  
+  .media-actions {
+    flex-direction: column;
+  }
+  
+  .media-actions .btn {
+    flex: none;
+    min-width: auto;
+    width: 100%;
+    margin-bottom: 0.25rem;
+  }
+  
+  .media-actions .btn:last-child {
+    margin-bottom: 0;
   }
 }
 
@@ -590,4 +642,145 @@ body {
     top: 10px;
     right: 15px;
   }
+}
+
+/* Raw Links Section Styles */
+.raw-links-content {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 0;
+  background-color: var(--input-bg);
+  transition: all 0.3s ease;
+}
+
+.raw-links-content.expanded {
+  animation: expandDown 0.3s ease-out;
+}
+
+@keyframes expandDown {
+  from {
+    opacity: 0;
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 200px;
+  }
+}
+
+#rawLinks h6 {
+  color: var(--text-color);
+  opacity: 0.7;
+}
+
+#rawLinks .btn-outline-secondary {
+  border-color: var(--border-color);
+  color: var(--text-color);
+  font-size: 0.8rem;
+  padding: 0.25rem 0.75rem;
+}
+
+#rawLinks .btn-outline-secondary:hover {
+  background-color: var(--card-bg);
+  border-color: var(--border-color);
+  color: var(--text-color);
+}
+
+/* Dark mode adjustments for raw links */
+[data-theme="dark"] #rawLinks .btn-outline-secondary {
+  border-color: var(--border-color);
+  color: var(--text-color);
+}
+
+[data-theme="dark"] #rawLinks .btn-outline-secondary:hover {
+  background-color: var(--border-color);
+  border-color: var(--border-color);
+  color: var(--text-color);
+}
+
+/* Improved raw links textarea */
+#rawLinks textarea {
+  border: none;
+  background-color: transparent;
+  color: var(--text-color);
+  opacity: 0.8;
+  font-size: 0.8rem;
+}
+
+#rawLinks textarea:focus {
+  box-shadow: none;
+  background-color: transparent;
+}
+
+/* Mobile optimization for raw links */
+@media (max-width: 768px) {
+  #rawLinks .d-flex {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  
+  #rawLinks .btn {
+    align-self: flex-end;
+  }
+}
+
+/* 批量操作样式 */
+.bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  align-items: center;
+  padding: 1rem;
+  background: var(--card-bg);
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border-color);
+}
+
+.bulk-actions .btn {
+  flex: 1;
+  min-width: 120px;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 576px) {
+  .bulk-actions {
+    flex-direction: column;
+  }
+  
+  .bulk-actions .btn {
+    width: 100%;
+    max-width: 200px;
+  }
+}
+
+/* 下载进度样式 */
+.download-progress {
+  padding: 1rem;
+  background: var(--light-bg);
+  border-radius: 8px;
+  border-left: 4px solid var(--primary-color);
+}
+
+.download-progress .progress {
+  height: 8px;
+  background-color: var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.download-progress .progress-bar {
+  transition: width 0.3s ease;
+}
+
+[data-theme="dark"] .download-progress {
+  background: rgba(255, 255, 255, 0.05);
+  border-left-color: var(--primary-color);
+}
+
+[data-theme="dark"] .download-progress .progress {
+  background-color: rgba(255, 255, 255, 0.1);
 }
