@@ -428,6 +428,13 @@ body {
   min-width: 100px;
 }
 
+/* 原始链接中的大按钮样式覆盖 */
+#rawLinks .media-actions .btn-lg {
+  font-size: 1.25rem !important;
+  padding: 0.75rem 1.5rem !important;
+  border-radius: 0.5rem !important;
+}
+
 .media-actions .btn-outline-primary {
   border-color: var(--btn-primary-border);
   color: var(--btn-primary-bg);
@@ -487,22 +494,6 @@ body {
     transform: scale(0.98);
   }
   
-  /* 添加点击提示 */
-  #mediaPreview:not(.fullscreen-mobile) .media-item::before {
-    content: "👆 轻触进入全屏";
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    background: rgba(0, 0, 0, 0.6);
-    color: white;
-    padding: 2px 6px;
-    border-radius: 10px;
-    font-size: 10px;
-    opacity: 0.8;
-    pointer-events: none;
-    z-index: 10;
-  }
-  
   .media-content video {
     max-height: 250px;
   }
@@ -514,17 +505,49 @@ body {
   
   .media-actions {
     flex-direction: column;
+    align-items: stretch;
   }
   
   .media-actions .btn {
     flex: none;
     min-width: auto;
     width: 100%;
-    margin-bottom: 0.25rem;
+    margin-bottom: 0.375rem;
+    margin-right: 0 !important; /* 移除右边距 */
+    margin-left: 0 !important; /* 移除左边距 */
+    text-align: center;
   }
   
   .media-actions .btn:last-child {
     margin-bottom: 0;
+  }
+  
+  /* 原始链接部分移动端布局优化 */
+  #rawLinks .d-flex.justify-content-between {
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+  }
+  
+  /* 原始链接中的一键复制按钮移动端优化 */
+  #rawLinks .media-actions {
+    width: 100%;
+  }
+  
+  #rawLinks .media-actions .btn {
+    width: 100% !important;
+    flex: none !important;
+  }
+  
+  /* 大按钮在移动端的样式调整 */
+  #rawLinks .btn-lg {
+    font-size: 1.1rem !important;
+    padding: 0.75rem 1.25rem !important;
+  }
+  
+  #rawLinks .btn-sm {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
   }
 }
 
@@ -869,7 +892,7 @@ body {
 
 /* 链接列表样式 */
 .links-list {
-  max-height: 300px;
+  max-height: 500px;
   overflow-y: auto;
 }
 
@@ -959,20 +982,46 @@ body {
   .link-item {
     flex-direction: column;
     align-items: stretch;
-    padding: 0.5rem;
+    padding: 0.75rem;
   }
   
+  /* 链接URL和类型标签的容器 */
   .link-url {
-    margin-right: 0;
-    margin-bottom: 0.5rem;
+    flex: none !important;
+    margin-right: 0 !important;
+    margin-bottom: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
   }
   
+  /* 确保类型标签在移动端正确显示 */
+  .link-type-badge {
+    align-self: flex-start;
+    margin-right: 0;
+    margin-bottom: 0.25rem;
+  }
+  
+  /* 按钮组在移动端的布局 */
   .link-actions {
-    justify-content: center;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.375rem !important;
+    flex-shrink: 0 !important;
+  }
+  
+  .link-actions .btn {
+    width: 100% !important;
+    text-align: center !important;
+    font-size: 0.75rem;
+    padding: 0.375rem 0.5rem;
+    margin-right: 0 !important; /* 移除右边距 */
+    margin-left: 0 !important; /* 移除左边距 */
+    flex: none !important;
   }
   
   .links-list {
-    max-height: 250px;
+    max-height: 400px;
   }
 }
 
@@ -1022,7 +1071,7 @@ body {
   /* 全屏模式下的标题栏 */
   #mediaPreview.fullscreen-mobile .d-flex {
     position: sticky;
-    top: 0;
+    top: 25px; /* 更紧凑的间距 */
     background: var(--bg-color);
     padding: 1rem 0;
     border-bottom: 1px solid var(--border-color);
@@ -1047,7 +1096,7 @@ body {
   #mediaPreview.fullscreen-mobile .exit-fullscreen-btn {
     position: fixed !important;
     top: 1rem !important;
-    right: 1rem !important;
+    left: 1rem !important;
     z-index: 2002 !important;
     background: rgba(0, 0, 0, 0.7) !important;
     color: white !important;
@@ -1073,22 +1122,3 @@ body {
   }
 }
 
-/* 原始链接标题样式优化 */
-.raw-links-title {
-  color: var(--text-color) !important;
-}
-
-/* 在深色模式下确保原始链接标题为白色 */
-[data-theme="dark"] .raw-links-title {
-  color: #ffffff !important;
-}
-
-/* 在浅色模式下使用深色 */
-[data-theme="light"] .raw-links-title {
-  color: #333333 !important;
-}
-
-/* 默认状态（无主题属性时）使用深色 */
-body:not([data-theme]) .raw-links-title {
-  color: #333333 !important;
-}

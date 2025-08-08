@@ -164,7 +164,7 @@ function handleApiResponse(data) {
       // 生成分开的链接列表（使用类型信息）
       generateLinksListWithTypes(urlsWithType);
       
-      // 显示原始链接区域和复制按钮
+      // 显示原始链接区域，但复制按钮保持隐藏直到展开
       const rawLinksSection = document.getElementById("rawLinks");
       if (rawLinksSection) {
         rawLinksSection.hidden = false;
@@ -174,7 +174,8 @@ function handleApiResponse(data) {
       } else {
         console.error('Raw links section not found!');
       }
-      if (copyDom) copyDom.hidden = false;
+      // 不自动显示复制按钮，等到用户点击展开时才显示
+      if (copyDom) copyDom.hidden = true;
       
       // 显示媒体预览
       displayMediaPreview(allUrls);
@@ -220,10 +221,10 @@ function generateLinksListWithTypes(urlsWithType) {
       </a>
       <div class="link-actions">
         <button class="btn btn-sm btn-outline-primary" onclick="copySingleLink('${url}')" title="复制链接">
-          📋
+          � 复制链接
         </button>
         <button class="btn btn-sm btn-outline-success" onclick="downloadFromUrl('${url}', ${index})" title="下载">
-          ⬇️
+          ⬇️ 下载
         </button>
       </div>
     `;
@@ -267,10 +268,10 @@ function generateLinksList(urls) {
       </a>
       <div class="link-actions">
         <button class="btn btn-sm btn-outline-primary" onclick="copySingleLink('${url}')" title="复制链接">
-          📋
+          � 复制链接
         </button>
         <button class="btn btn-sm btn-outline-success" onclick="downloadFromUrl('${url}', ${index})" title="下载">
-          ⬇️
+          ⬇️ 下载
         </button>
       </div>
     `;
@@ -1179,6 +1180,7 @@ document.addEventListener("DOMContentLoaded", function() {
 function toggleRawLinks() {
   const content = document.getElementById('rawLinksContent');
   const toggleText = document.getElementById('rawLinksToggleText');
+  const copyButton = document.getElementById('autocopy');
   
   console.log('Toggle raw links clicked, content:', content); // 调试日志
   
@@ -1191,11 +1193,15 @@ function toggleRawLinks() {
     content.style.display = 'block';
     content.classList.add('expanded');
     toggleText.textContent = '收起';
+    // 展开时显示一键复制按钮
+    if (copyButton) copyButton.hidden = false;
     console.log('Raw links expanded'); // 调试日志
   } else {
     content.style.display = 'none';
     content.classList.remove('expanded');
     toggleText.textContent = '展开';
+    // 收起时隐藏一键复制按钮
+    if (copyButton) copyButton.hidden = true;
     console.log('Raw links collapsed'); // 调试日志
   }
 }
@@ -1249,7 +1255,7 @@ function enableMobileFullscreen() {
     const exitButton = document.createElement('button');
     exitButton.innerHTML = '❌ 退出全屏';
     exitButton.className = 'btn btn-sm btn-secondary exit-fullscreen-btn';
-    exitButton.style.cssText = 'position: absolute; top: 1rem; right: 1rem; z-index: 2002;';
+    exitButton.style.cssText = 'position: absolute; top: 1rem; left: 1rem; z-index: 2002;';
     exitButton.onclick = disableMobileFullscreen;
     
     previewContainer.appendChild(exitButton);

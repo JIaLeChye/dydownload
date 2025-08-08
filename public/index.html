@@ -73,22 +73,11 @@
       <div class="row justify-content-center">
         <div class="col-12 col-md-8 col-lg-6">
           <div id="rawLinks" class="mt-4" hidden>
-            <div class="d-flex justify-content-between align-items-center mb-2">
-              <h6 class="mb-0 raw-links-title">🔗 原始链接</h6>
-              <div class="d-flex gap-2">
-                <button
-                  onclick="copyToClipboard()"
-                  id="autocopy"
-                  class="btn btn-sm btn-primary"
-                  data-clipboard-target="#result"
-                  hidden
-                >
-                  📋 一键复制全部链接
-                </button>
-                <button class="btn btn-sm btn-outline-secondary" onclick="toggleRawLinks()">
-                  <span id="rawLinksToggleText">展开</span>
-                </button>
-              </div>
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h5 class="mb-0">🔗 原始链接</h5>
+              <button class="btn btn-sm btn-outline-secondary" onclick="toggleRawLinks()">
+                <span id="rawLinksToggleText">展开</span>
+              </button>
             </div>
             <div id="rawLinksContent" class="raw-links-content" style="display: none;">
               <!-- 原有的文本框保留作为备用 -->
@@ -104,6 +93,20 @@
               <div id="linksList" class="links-list">
                 <!-- 链接将通过JavaScript动态生成 -->
               </div>
+              
+              <!-- 一键复制按钮放在内容底部 -->
+              <div class="media-actions mt-3">
+                <button
+                  onclick="copyToClipboard()"
+                  id="autocopy"
+                  class="btn btn-lg btn-primary"
+                  data-clipboard-target="#result"
+                  hidden
+                >
+                  📋 一键复制全部链接
+                </button>
+              </div>
+            </div>
             </div>
           </div>
         </div>
