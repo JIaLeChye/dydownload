@@ -1,3 +1,7 @@
+# 原作者：https://github.com/helson-lin/douyin_no_watermark
+
+
+
 <h2 align="center">douyin_no_watermark是一个抖音视频无水印下载程序 【2024/11/23 a_bougs 更新 无法使用】</h2>
 <p align="center">支持Docker、Vercel、私有化服务部署，支持IOS捷径快捷下载</p>
 <p align="center">免责声明：使用本项目所产生的所有风险由用户自行承担。我们不对因使用本项目而导致的任何直接、间接、偶然、特殊或后果性的损害负责，包括但不限于利润损失、数据丢失或其他经济损失。
