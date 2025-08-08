@@ -2,8 +2,8 @@
     <a href="https://github.com/helson-lin">
         <img alt="Original Author" src="https://img.shields.io/badge/Original Author-helson_lin-blue">
     </a>
-    <a href="https://github.com/helson-lin/douyin_no_watermark"> 
-        <img alt="Project Link" src="https://img.shields.io/badge/Project Link-douyin_no_watermark-blue">
+    <a href="https://github.com/JIaLeChye/dydownload"> 
+        <img alt="Project Link" src="https://img.shields.io/badge/Project Link-dydownload-blue">
     </a>
 </p>
 
@@ -14,20 +14,20 @@
 <p align="center">免责声明：使用本项目所产生的所有风险由用户自行承担。我们不对因使用本项目而导致的任何直接、间接、偶然、特殊或后果性的损害负责，包括但不限于利润损失、数据丢失或其他经济损失。
 责任限制：在适用法律允许的最大范围内，项目作者及贡献者对因使用或无法使用本项目而导致的任何损失不承担责任。</p>
 <p align="center">
-    <a href="https://hub.docker.com/r/h55205l/ffandown">
-        <img alt="docker image size" src="https://img.shields.io/docker/image-size/h55205l/douyin_no_watermark"/>
+    <a href="https://github.com/JIaLeChye/dydownload">
+        <img alt="github issues" src="https://img.shields.io/github/issues/JIaLeChye/dydownload"/>
     </a>
-    <a href="https://hub.docker.com/r/h55205l/douyin_no_watermark">
-        <img alt="docker pulls" src="https://img.shields.io/docker/pulls/h55205l/douyin_no_watermark?style=social"/>
+    <a href="https://github.com/JIaLeChye/dydownload">
+        <img alt="github stars" src="https://img.shields.io/github/stars/JIaLeChye/dydownload?style=social"/>
     </a>
-    <a href="https://github.com/helson-lin/douyin_no_watermark">
-          <img alt="release downloads" src="https://img.shields.io/github/downloads/helson-lin/douyin_no_watermark/total?color=brightgreen&label=release%20download"/>
+    <a href="https://github.com/JIaLeChye/dydownload">
+          <img alt="release downloads" src="https://img.shields.io/github/downloads/JIaLeChye/dydownload/total?color=brightgreen&label=release%20download"/>
     </a>
-    <a href="https://github.com/helson-lin/douyin_no_watermark">
-        <img alt="docker image size" src="https://img.shields.io/badge/platform-macos%7Clinux%7Cwin-brightgreen"/>
+    <a href="https://github.com/JIaLeChye/dydownload">
+        <img alt="platform support" src="https://img.shields.io/badge/platform-macos%7Clinux%7Cwin-brightgreen"/>
     </a>
-     <a href="https://github.com/helson-lin/douyin_no_watermark">
-        <img alt="docker image size" src="https://img.shields.io/github/last-commit/helson-lin/douyin_no_watermark"/>
+     <a href="https://github.com/JIaLeChye/dydownload">
+        <img alt="last commit" src="https://img.shields.io/github/last-commit/JIaLeChye/dydownload"/>
     </a>
 </p>
 
