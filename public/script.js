@@ -513,6 +513,12 @@ function displayMediaPreview(urls) {
   }
   
   previewContainer.hidden = false;
+  
+  // 在移动端自动启用全屏模式
+  if (window.innerWidth <= 768) {
+    enableMobileFullscreen();
+  }
+  
   mediaContainer.innerHTML = '<div class="media-loading"><div class="spinner-border" role="status"></div><span class="ms-2">正在加载预览...</span></div>';
   
   // 检测每个URL的媒体类型并创建预览
@@ -1232,3 +1238,49 @@ function forceShowRawLinks() {
 
 // 在控制台中可以调用: forceShowRawLinks()
 console.log('调试提示: 在控制台中输入 forceShowRawLinks() 来强制显示原始链接部分');
+
+// 移动端全屏预览功能
+function enableMobileFullscreen() {
+  if (window.innerWidth <= 768) {
+    const previewContainer = document.getElementById("mediaPreview");
+    previewContainer.classList.add('fullscreen-mobile');
+    
+    // 添加退出全屏的点击事件
+    const exitButton = document.createElement('button');
+    exitButton.innerHTML = '❌ 退出全屏';
+    exitButton.className = 'btn btn-sm btn-secondary exit-fullscreen-btn';
+    exitButton.style.cssText = 'position: absolute; top: 1rem; right: 1rem; z-index: 2002;';
+    exitButton.onclick = disableMobileFullscreen;
+    
+    previewContainer.appendChild(exitButton);
+  }
+}
+
+function disableMobileFullscreen() {
+  const previewContainer = document.getElementById("mediaPreview");
+  const exitButton = previewContainer.querySelector('.exit-fullscreen-btn');
+  
+  previewContainer.classList.remove('fullscreen-mobile');
+  if (exitButton) {
+    exitButton.remove();
+  }
+}
+
+// 监听屏幕旋转和窗口大小变化
+window.addEventListener('resize', function() {
+  const previewContainer = document.getElementById("mediaPreview");
+  
+  if (window.innerWidth > 768 && previewContainer.classList.contains('fullscreen-mobile')) {
+    disableMobileFullscreen();
+  }
+});
+
+// ESC键退出全屏模式
+document.addEventListener('keydown', function(event) {
+  if (event.key === 'Escape') {
+    const previewContainer = document.getElementById("mediaPreview");
+    if (previewContainer.classList.contains('fullscreen-mobile')) {
+      disableMobileFullscreen();
+    }
+  }
+});

@@ -32,6 +32,28 @@
     margin-bottom: 10px;
   }
   
+  /* 优化小按钮在移动端的显示 */
+  .btn-sm {
+    width: auto !important;
+    padding: 6px 12px !important;
+    font-size: 14px !important;
+    margin-bottom: 5px;
+  }
+  
+  /* 原始链接区域的按钮组优化 */
+  #rawLinks .btn-sm {
+    padding: 4px 8px !important;
+    font-size: 12px !important;
+    min-width: 60px;
+  }
+  
+  /* 一键复制按钮特别优化 */
+  #autocopy {
+    padding: 6px 10px !important;
+    font-size: 13px !important;
+    min-width: 80px;
+  }
+  
   .btn-primary {
     background-color: #007bff;
     border-color: #007bff;
@@ -927,9 +949,86 @@ body {
   }
 }
 
-/* 全宽度内容预览优化 */
-.media-container {
-  transition: all 0.3s ease;
+/* 内容预览响应式设计 */
+/* 桌面端：与表单保持相同宽度 */
+@media (min-width: 769px) {
+  #mediaPreviewColumn {
+    max-width: 66.666667%; /* col-md-8 equivalent */
+  }
+  
+  @media (min-width: 992px) {
+    #mediaPreviewColumn {
+      max-width: 50%; /* col-lg-6 equivalent */
+    }
+  }
+}
+
+/* 移动端：默认全宽，焦点时可选择全屏模式 */
+@media (max-width: 768px) {
+  #mediaPreview {
+    transition: all 0.3s ease;
+  }
+  
+  /* 全屏预览模式 */
+  #mediaPreview.fullscreen-mobile {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 2000;
+    background: var(--bg-color);
+    padding: 1rem;
+    margin: 0 !important;
+    overflow-y: auto;
+  }
+  
+  #mediaPreview.fullscreen-mobile .media-container {
+    height: calc(100vh - 120px);
+    max-height: none;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    background: transparent;
+  }
+  
+  /* 全屏模式下的标题栏 */
+  #mediaPreview.fullscreen-mobile .d-flex {
+    position: sticky;
+    top: 0;
+    background: var(--bg-color);
+    padding: 1rem 0;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 1rem;
+    z-index: 2001;
+  }
+  
+  /* 全屏模式下的网格优化 */
+  #mediaPreview.fullscreen-mobile .media-container.grid-view {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.8rem;
+    padding: 0.5rem;
+  }
+  
+  /* 全屏模式下的媒体项优化 */
+  #mediaPreview.fullscreen-mobile .media-item {
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  
+  /* 添加退出全屏按钮 */
+  #mediaPreview.fullscreen-mobile .exit-fullscreen-btn {
+    position: fixed !important;
+    top: 1rem !important;
+    right: 1rem !important;
+    z-index: 2002 !important;
+    background: rgba(0, 0, 0, 0.7) !important;
+    color: white !important;
+    border: none !important;
+    padding: 8px 12px !important;
+    border-radius: 20px !important;
+    font-size: 12px !important;
+  }
 }
 
 /* 优化媒体项在大屏幕下的显示 */
@@ -945,4 +1044,24 @@ body {
     max-width: 1600px;
     margin: 0 auto;
   }
+}
+
+/* 原始链接标题样式优化 */
+.raw-links-title {
+  color: var(--text-color) !important;
+}
+
+/* 在深色模式下确保原始链接标题为白色 */
+[data-theme="dark"] .raw-links-title {
+  color: #ffffff !important;
+}
+
+/* 在浅色模式下使用深色 */
+[data-theme="light"] .raw-links-title {
+  color: #333333 !important;
+}
+
+/* 默认状态（无主题属性时）使用深色 */
+body:not([data-theme]) .raw-links-title {
+  color: #333333 !important;
 }
