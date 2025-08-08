@@ -301,8 +301,9 @@ body {
   border-radius: 12px;
   padding: 1rem;
   background-color: var(--input-bg);
-  max-height: 600px;
+  max-height: 80vh;
   overflow-y: auto;
+  scroll-behavior: smooth;
 }
 
 .media-item {
@@ -321,9 +322,25 @@ body {
 /* Grid view styles */
 .media-container.grid-view {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
   padding: 1rem;
+}
+
+@media (min-width: 768px) {
+  .media-container.grid-view {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 2rem;
+    padding: 1.5rem;
+  }
+}
+
+@media (min-width: 1200px) {
+  .media-container.grid-view {
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 2.5rem;
+    padding: 2rem;
+  }
 }
 
 .media-container.grid-view .media-item {
@@ -907,5 +924,25 @@ body {
   
   .links-list {
     max-height: 250px;
+  }
+}
+
+/* 全宽度内容预览优化 */
+.media-container {
+  transition: all 0.3s ease;
+}
+
+/* 优化媒体项在大屏幕下的显示 */
+@media (min-width: 1400px) {
+  .media-container.grid-view {
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  }
+}
+
+/* 确保在超宽屏幕下不会过度拉伸 */
+@media (min-width: 1800px) {
+  .media-container.grid-view {
+    max-width: 1600px;
+    margin: 0 auto;
   }
 }
