@@ -53,12 +53,12 @@
 
 ### 部署
 
-#### Vercel部署
+#### Vercel部署 （原作者为源）
 
 > 由于Vercel的边缘函数默认的超时时间为6s,批量下载主页作品会多次请求作者的作品耗时比较长，会出现超时的问题（无法解决，只有购买vercel的付费版本）。
 
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/helson-lin/tk_no_water_node)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/helson-lin/tk_no_water_node) 
 
 #### 服务器手动部署
 
@@ -118,5 +118,7 @@ This project is licensed under the Creative Commons Attribution-NonCommercial 4.
 ## 致谢
 
 
- `X-Bogus.js`： [Doouyin_TikTOk_Download_API](https://github.com/Evil0ctal/Douyin_TikTok_Download_API), `X-Bogus.js`
+`X-Bogus.js`： [Doouyin_TikTOk_Download_API](https://github.com/Evil0ctal/Douyin_TikTok_Download_API), `X-Bogus.js`
+`X-Bogus.js`:  [douyin_no_watermark](https://github.com/helson-lin/douyin_no_watermark), `X-Bogus.js` 
+ 
 
