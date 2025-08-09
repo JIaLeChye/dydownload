@@ -398,6 +398,58 @@ const getReadmeContent = () => {
     return htmlWithStyle
 }
 
+// 服务器端代理下载 - 用户点击下载按钮直接下载，不跳转链接
+app.get('/proxy-download', async (req, res) => {
+    const { url, filename } = req.query;
+    
+    if (!url) {
+        return res.status(400).json({ error: '缺少URL参数' });
+    }
+    
+    try {
+        console.log('🔄 服务器代理下载:', filename || 'unknown');
+        
+        const fetch = require('node-fetch');
+        
+        // 直接获取文件内容
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': 'https://www.douyin.com/'
+            },
+            timeout: 60000
+        });
+        
+        if (!response.ok) {
+            console.log('❌ 文件获取失败:', response.status);
+            return res.status(response.status).json({ error: '文件获取失败' });
+        }
+        
+        // 获取文件信息
+        const contentType = response.headers.get('content-type') || 'application/octet-stream';
+        const contentLength = response.headers.get('content-length');
+        
+        // 设置文件下载头
+        const finalFilename = filename || 'douyin_video.mp4';
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(finalFilename)}"`);
+        
+        if (contentLength) {
+            res.setHeader('Content-Length', contentLength);
+        }
+        
+        console.log('✅ 开始下载:', finalFilename);
+        
+        // 直接将文件流传给用户
+        response.body.pipe(res);
+        
+    } catch (error) {
+        console.error('❌ 代理下载错误:', error.message);
+        res.status(500).json({ error: '下载失败: ' + error.message });
+    }
+});
+
 const getArgsPort = () => {
     const args = process.argv.slice(2);
     const portArg = args.find(i => i.toLocaleUpperCase().indexOf('PORT') !== -1);

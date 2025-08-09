@@ -488,11 +488,18 @@ function directDownloadFromUrl(url, index) {
     const filePrefix = isImage ? 'douyin_image' : 'douyin_video';
     const fileName = `${filePrefix}_${timestamp}_${index + 1}${isImage ? '.jpg' : '.mp4'}`;
     
-    showToast('🚀 开始下载...', 'info');
+    console.log('⬇️ 服务器代理下载:', fileName);
+    showToast('⬇️ 开始下载...', 'info');
     
-    // 创建下载链接
+    // 通过服务器代理下载，不是直接跳转链接
+    const proxyUrl = `/proxy-download?${new URLSearchParams({
+      url: url,
+      filename: fileName
+    })}`;
+    
+    // 创建下载链接，指向服务器代理端点
     const link = document.createElement('a');
-    link.href = url;
+    link.href = proxyUrl;
     link.download = fileName;
     link.style.display = 'none';
     
