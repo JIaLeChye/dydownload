@@ -1,115 +1,112 @@
+<div align="center">
+
+# 🎬 抖音工具 - DY Download
+
 <p align="center">
-    <a href="https://github.com/helson-lin">
-        <img alt="Original Author" src="https://img.shields.io/badge/Original Author-helson_lin-blue">
+    <em>现代化的抖音视频/图片无水印下载工具</em>
+</p>
+
+<p align="center">
+    <a href="https://github.com/helson-lin/douyin_no_watermark">
+        <img alt="基于项目" src="https://img.shields.io/badge/基于-douyin__no__watermark-blue">
     </a>
-    <a href="https://github.com/helson-lin/douyin_no_watermark"> 
-        <img alt="Project Link" src="https://img.shields.io/badge/Project Link-douyin__no__watermark-blue">
+    <a href="https://github.com/JIaLeChye/dydownload">
+        <img alt="当前版本" src="https://img.shields.io/badge/版本-2025.1-brightgreen">
     </a>
 </p>
 
+</div>
 
+## ✨ 特色功能
 
-<h2 align="center">douyin_no_watermark是一个抖音视频无水印下载程序 【2024/11/23 a_bougs 更新 无法使用】</h2>
-<p align="center">支持Docker、Vercel、私有化服务部署，支持IOS捷径快捷下载</p>
-<p align="center">免责声明：使用本项目所产生的所有风险由用户自行承担。我们不对因使用本项目而导致的任何直接、间接、偶然、特殊或后果性的损害负责，包括但不限于利润损失、数据丢失或其他经济损失。
-责任限制：在适用法律允许的最大范围内，项目作者及贡献者对因使用或无法使用本项目而导致的任何损失不承担责任。</p>
+🎯 **一键解析** - 粘贴抖音分享链接，自动识别视频和图片  
+📱 **移动优先** - 完美适配手机端，支持全屏预览模式  
+🌙 **深色模式** - 内置明暗主题切换，护眼体验  
+⚡ **实时预览** - 媒体内容可视化预览，支持网格和列表视图  
+<!-- 📥 **批量下载** - 一键下载所有内容，支持分类下载  -->
+<!-- 🔄 **智能识别** - 自动区分视频和图片类型   -->
+📋 **便捷复制** - 单个或批量复制下载链接  
+
+## 🎨 界面预览
+
+<div align="center">
+<img src="https://img.shields.io/badge/界面设计-现代化响应式-blue?style=for-the-badge" alt="现代化界面"/>
+</div>
+
+### 核心功能截图
+
+- **🖥️ 桌面端**: 简洁居中布局，专业工具体验
+- **📱 移动端**: 全屏沉浸式预览，触控优化
+- **🌓 主题切换**: 明暗模式无缝切换
+- **📋 链接管理**: 可视化链接列表，类型标识
+
+## ⚠️ 免责声明
+
+> 使用本项目所产生的所有风险由用户自行承担。我们不对因使用本项目而导致的任何直接、间接、偶然、特殊或后果性的损害负责，包括但不限于利润损失、数据丢失或其他经济损失。
+
+## 📊 项目状态
+
 <p align="center">
     <a href="https://github.com/JIaLeChye/dydownload">
-        <img alt="github issues" src="https://img.shields.io/github/issues/JIaLeChye/dydownload"/>
+        <img alt="GitHub Issues" src="https://img.shields.io/github/issues/JIaLeChye/dydownload"/>
     </a>
     <a href="https://github.com/JIaLeChye/dydownload">
-        <img alt="github stars" src="https://img.shields.io/github/stars/JIaLeChye/dydownload?style=social"/>
+        <img alt="GitHub Stars" src="https://img.shields.io/github/stars/JIaLeChye/dydownload?style=social"/>
     </a>
-    <!-- <a href="https://github.com/JIaLeChye/dydownload">
-          <img alt="release downloads" src="https://img.shields.io/github/downloads/JIaLeChye/dydownload/total?color=brightgreen&label=release%20download"/>
-    </a> -->
     <a href="https://github.com/JIaLeChye/dydownload">
-        <img alt="platform support" src="https://img.shields.io/badge/platform-macos%7Clinux%7Cwin-brightgreen"/>
+        <img alt="平台支持" src="https://img.shields.io/badge/平台-macOS%7CLinux%7CWindows-brightgreen"/>
     </a>
-     <a href="https://github.com/JIaLeChye/dydownload">
-        <img alt="last commit" src="https://img.shields.io/github/last-commit/JIaLeChye/dydownload"/>
+    <a href="https://github.com/JIaLeChye/dydownload">
+        <img alt="最后提交" src="https://img.shields.io/github/last-commit/JIaLeChye/dydownload"/>
     </a>
 </p>
-
-<<<<<<< Updated upstream
-### 需知
-=======
-> 注：历史调试/测试脚本已迁移到 `docs/legacy/`，生产部署不需要它们。
 
 ## 🚀 快速开始
->>>>>>> Stashed changes
 
-如果程序出现如下类似报错: `FetchError: invalid json response body at https://www.douyin.com/aweme/v1/web/aweme/detail/?device_platform=webapp&aid=6383&channel=channel_pc_web&aweme_id=7366865544722550035&pc_client_type=1&version_code=190500&versio`
+### 环境要求
 
-请替换 `bin/index.js` 16 行的cookie变量. cookie 变量的获取，可以在抖音网页版内，打开“开发者工具” - “应用/Application” - “Cookie”.
+- Node.js >= 18.0.0
+- npm 或 yarn 包管理器
 
-![111725585960_ pic](https://github.com/user-attachments/assets/a4c63bfc-5d4f-4e05-8e80-0706cdd323c6)
+### 本地运行
 
-#### 如直接使用解析之后的地址下载出现 403 forbidden
+> **第一步**: Fork 本仓库到你的 GitHub 账户
 
-请在请求下载的时候添加`Referer`请求头，值为`url`的值
+```bash
+# 克隆你 Fork 的项目（替换 YOUR_USERNAME 为你的用户名）
+git clone https://github.com/YOUR_USERNAME/dydownload.git
+cd dydownload
 
+# 安装依赖
+npm install
 
-### Update Log
-
-2024/9/5: 🐛 修复 x_bogus 验证失败，转换为 a_bougs 参数。
-
-2024/1/4: ✨ 更新通过用户主页分享链接，批量下载作品
-
-2024/1/5: ✨ 优化批量下载用户主页作品，支持图片作品下载。
-
-### 效果展示
-
-[![预览](https://file.helson-lin.cn/picgoSnipaste_2024-01-06_18-33-54.png)](https://file.helson-lin.cn/picgooimi_tk_docs.mp4)
-
-
-
-### 部署
-
-#### Vercel部署 （原作者为源）
-
-> 由于Vercel的边缘函数默认的超时时间为6s,批量下载主页作品会多次请求作者的作品耗时比较长，会出现超时的问题（无法解决，只有购买vercel的付费版本）。
-
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/helson-lin/tk_no_water_node) 
-
-#### 服务器手动部署
-
-1. 从Release下载对应平台的可执行文件，到服务器。
-2. 授权：`chmod +x excutablefilename` `${excutablefilename}`为对应的文件名称
-3. `./oimi-tk-linux-x86`根据实际情况执行。
-
-如果服务器和linux基础知识都不明白，不建议手动。
-
-自定义端口：
-
-创建一个`.env`文件在程序同级别目录， 添加如下内容
-
-```js
-PORT = 11233
+# 启动开发服务器
+npm run dev
 ```
 
-或者通过命令行参数指定端口：`./oimi-tk-linux-x86 --port=2301`, 命令行权重最高。
+访问 http://localhost:3000 开始使用
 
-#### Docker部署
+### 使用方法
 
-1. 拉取镜像: `docker pull h55205l/douyin_no_watermark:latest`,目前没有构建`arm`版本
-2. 运行服务：`docker run -p 3311:3000 -d h55205l/douyin_no_watermark:latest`
+1. **📎 粘贴链接** - 在输入框粘贴抖音分享链接
+2. **🔍 自动解析** - 点击"解析"按钮，系统自动识别内容
+3. **👀 预览内容** - 在预览区域查看视频/图片
+4. **💾 下载文件** - 单个下载或批量下载到本地
 
-内置默认端口为`3000`, 映射端口自行修改
+## 🛠️ 核心技术特性
 
-### API
+### 前端技术栈
+- **Bootstrap 5** - 现代响应式UI框架
+- **原生JavaScript** - 高性能客户端逻辑
+- **CSS3** - 深色模式、动画效果、移动端适配
+- **Progressive Web App** - 接近原生应用体验
 
-`code`: 0: error happened, 1: sucess request
-`/workflow`: is for ios workflow
+### 移动端优化
+- **🔄 全屏预览模式** - 移动端沉浸式体验
+- **👆 触控优化** - 手势交互、按钮大小适配
+- **📐 响应式布局** - 自适应不同屏幕尺寸
+- **⚡ 性能优化** - 懒加载、图片压缩
 
-<<<<<<< Updated upstream
-| URL       | METHOD | PARAMS      | RESPONSE                                        |
-| --------- | ------ | :---------- | ----------------------------------------------- |
-| `/douyin`   | `POST`   | `{ url:  ""}` | `{ code: 0, data: {video: '', img: '', msg: ''}}` |
-| `/workflow` | `POST`   | `{ url:  ""}` | `{ code: 0, data: ['downloadUrl'] }`              |
-|           |        |             |                                                 |
-=======
 ### 用户体验
 - **🎨 双主题设计** - 明亮/深色模式切换
 - **📱 移动优先** - Mobile-First设计理念
@@ -117,35 +114,6 @@ PORT = 11233
 - **💡 智能提示** - 操作指引、错误提示
 
 ## ⚙️ 故障排除
-
-## 🌐 环境变量
-
-| 变量名 | 默认值 | 说明 |
-| ------ | ------ | ---- |
-| `PORT` | 3000 | 服务启动端口 |
-| `SINGLE_VIDEO_URL` | (未设置) | 设为 `1` 时，单视频解析只返回一个首选无水印链接，避免前端展示多个候选 |
-| `STABLE_VIDEO_ONLY` | (未设置) | 设为 `1` 时，仅返回稳定接口 `https://aweme.snssdk.com/aweme/v1/play/?video_id=...`，忽略其它候选 |
-| `DEBUG_VIDEO_URLS` | (未设置) | 设为 `1` 时，接口返回全部候选视频链接用于调试 |
-
-使用方式：
-
-PowerShell 临时设置并启动：
-```powershell
-$env:SINGLE_VIDEO_URL="1"; npm run dev
-```
-
-写入 .env 文件：
-```
-SINGLE_VIDEO_URL=1
-```
-
-不设置时默认返回多个候选链接（不同线路 / 参数形式），便于在某些链接403时手动切换。
-
-组合策略：
-- 仅设置 `STABLE_VIDEO_ONLY=1` → 只返 1 条稳定 URL（推荐稳定部署）
-- 仅设置 `SINGLE_VIDEO_URL=1` → 经过排序后的首选候选（可能不是 stable 接口，但最短）
-- 两者都不设 → 返回所有候选用于手动调试
-- 设置 `DEBUG_VIDEO_URLS=1` 或请求体/查询参数带 `debug=1` → 临时查看全部候选
 
 ### 🔧 403 Forbidden 错误解决
 
@@ -251,11 +219,11 @@ console.log('测试链接:', url);
 "
 ```
 
-**Cookie快速更新（手动）**：
-1. 访问 https://www.douyin.com 并登录（如需）
-2. 按F12 打开 DevTools，Application / Storage 里复制必要 cookie (sid_guard, sessionid, msToken, webid, ttwid 等)
-3. 拼接成 `key=value;` 形式并更新 `bin/index.js` 中的 cookie 常量
-4. 保存并重启服务
+**Cookie快速更新**：
+1. 访问 https://www.douyin.com
+2. 按F12，在Console中粘贴 `cookie-helper.js` 的代码
+3. 复制输出的cookie字符串
+4. 替换 `bin/index.js` 中的cookie
 
 **重启服务器**：
 ```bash
@@ -430,31 +398,5 @@ echo "PORT=8080" > .env
 Made with ❤️ by [JIaLeChye](https://github.com/JIaLeChye)
 
 </div>
->>>>>>> Stashed changes
 
-
-
-**捷径下载**: [iCloud](https://www.icloud.com/shortcuts/58969bbfa6ae405ba9358d60590e3f9c)
-
-捷径内服务器，仅供测试使用。如果有大量使用需求，请自行部署。
-
-推荐使用个人服务器部署，`vercel`部署批量下载或出现超时（单个作品下载不会），请谨记(付费版本除外)。
-
-### 免责声明
-
-使用本项目所产生的所有风险由用户自行承担。我们不对因使用本项目而导致的任何直接、间接、偶然、特殊或后果性的损害负责，包括但不限于利润损失、数据丢失或其他经济损失。
-责任限制：在适用法律允许的最大范围内，项目作者及贡献者对因使用或无法使用本项目而导致的任何损失不承担责任。
-
-
-## License
-
-This project is licensed under the Creative Commons Attribution-NonCommercial 4.0 International Public License. See the [LICENSE](./LICENSE) file for details.
-
-
-## 致谢
-
-
-`X-Bogus.js`： [Doouyin_TikTOk_Download_API](https://github.com/Evil0ctal/Douyin_TikTok_Download_API), `X-Bogus.js`
-`X-Bogus.js`:  [douyin_no_watermark](https://github.com/helson-lin/douyin_no_watermark), `X-Bogus.js` 
- 
 
