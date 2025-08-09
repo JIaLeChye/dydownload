@@ -917,8 +917,10 @@ function displayMediaItems(mediaItems) {
                         <button onclick="retryLoadMedia('${item.url}', ${index})" class="btn btn-sm btn-outline-primary mt-2">重试</button>
                       </div>`;
     } else {
+      // 使用代理URL来避免403错误
+      const proxyVideoUrl = `/proxy-video?url=${encodeURIComponent(item.url)}`;
       mediaContent = `<video controls preload="metadata" onclick="handleMediaClick(${index}, '${item.type}')" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-                       <source src="${item.url}" type="video/mp4">
+                       <source src="${proxyVideoUrl}" type="video/mp4">
                        您的浏览器不支持视频播放。
                      </video>
                      <div style="display:none; padding: 2rem; text-align: center; background: var(--card-bg); border-radius: 8px;">
@@ -974,8 +976,10 @@ function retryLoadMedia(url, index) {
                                     <div>图片加载失败</div>
                                   </div>`;
       } else {
+        // 使用代理URL来避免403错误
+        const proxyVideoUrl = `/proxy-video?url=${encodeURIComponent(item.url)}`;
         mediaContent.innerHTML = `<video controls preload="metadata" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-                                   <source src="${item.url}" type="video/mp4">
+                                   <source src="${proxyVideoUrl}" type="video/mp4">
                                    您的浏览器不支持视频播放。
                                  </video>
                                  <div style="display:none; padding: 2rem; text-align: center; background: var(--card-bg); border-radius: 8px;">

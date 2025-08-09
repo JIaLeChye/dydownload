@@ -484,6 +484,66 @@ app.get('/proxy-download', async (req, res) => {
     }
 });
 
+// 视频代理端点 - 用于预览，不强制下载
+app.get('/proxy-video', async (req, res) => {
+    const { url } = req.query;
+    
+    if (!url) {
+        return res.status(400).json({ error: '缺少URL参数' });
+    }
+    
+    try {
+        console.log('🎬 视频代理预览:', url.substring(0, 100) + '...');
+        
+        const fetch = require('node-fetch');
+        
+        // 直接获取文件内容
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': 'https://www.douyin.com/',
+                'Accept': '*/*',
+                'Accept-Encoding': 'identity',
+                'Connection': 'keep-alive'
+            },
+            timeout: 60000
+        });
+        
+        if (!response.ok) {
+            console.log('❌ 视频获取失败:', response.status, response.statusText);
+            return res.status(response.status).json({ error: `视频获取失败: ${response.status} ${response.statusText}` });
+        }
+        
+        // 获取文件信息
+        const contentType = response.headers.get('content-type') || 'video/mp4';
+        const contentLength = response.headers.get('content-length');
+        
+        console.log('📋 视频内容类型:', contentType);
+        if (contentLength) {
+            console.log('📏 视频大小:', Math.round(contentLength / 1024 / 1024 * 100) / 100 + ' MB');
+        }
+        
+        // 设置视频流响应头（用于预览，不是下载）
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Accept-Ranges', 'bytes');
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+        
+        if (contentLength) {
+            res.setHeader('Content-Length', contentLength);
+        }
+        
+        console.log('✅ 开始视频流传输');
+        
+        // 直接将文件流传给用户
+        response.body.pipe(res);
+        
+    } catch (error) {
+        console.error('❌ 视频代理错误:', error.message);
+        res.status(500).json({ error: '视频加载失败: ' + error.message });
+    }
+});
+
 const getArgsPort = () => {
     const args = process.argv.slice(2);
     const portArg = args.find(i => i.toLocaleUpperCase().indexOf('PORT') !== -1);
