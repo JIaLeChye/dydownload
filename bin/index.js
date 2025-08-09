@@ -24,24 +24,90 @@ class Scraper {
      * @returns {string} videoId
      */
     getVideoIdByShareUrl(url) {
-        const headers = {
-            authority: 'v.douyin.com',
-            'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 10_3_1 like Mac OS X) AppleWebKit/603.1.30 (KHTML, like Gecko) Version/10.0 Mobile/14E304 Safari/602.1',
-        }
-        return new Promise((resolve, reject) => {
-            fetch(url, {
-                headers,
-                onRedirect (res, nextOptions) {
-                    return nextOptions;
+        // 尝试多种用户代理
+        const userAgents = [
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 10_3_1 like Mac OS X) AppleWebKit/603.1.30 (KHTML, like Gecko) Version/10.0 Mobile/14E304 Safari/602.1',
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+            'Mozilla/5.0 (Linux; Android 12; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Mobile Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        ];
+        
+        return new Promise(async (resolve, reject) => {
+            for (let i = 0; i < userAgents.length; i++) {
+                const userAgent = userAgents[i];
+                console.log(`🔍 尝试用户代理 ${i + 1}/${userAgents.length}:`, userAgent.substring(0, 50) + '...');
+                
+                const headers = {
+                    authority: 'v.douyin.com',
+                    'user-agent': userAgent,
                 }
-            }).then((res) => {
-                if (!res?.url) reject(new Error('can\'t get room id'))
-                // let videoId = res?.url?.match(/video\/(\d+)/)?.[1];
-                const videoId = res?.url?.match(/(slides|video|note)\/(\d+)/)?.[2]; 
-                if (!videoId) reject(new Error('can\'t get videoId, please check your url'))
-                resolve(videoId)
-            })
-        })
+                
+                try {
+                    const res = await fetch(url, {
+                        headers,
+                        redirect: 'follow', // 跟随重定向
+                        timeout: 10000
+                    });
+                    
+                    console.log('🔍 原始URL:', url);
+                    console.log('🔄 重定向后URL:', res?.url);
+                    
+                    if (!res?.url) {
+                        console.log('❌ 无法获取重定向URL，尝试下一个用户代理');
+                        continue;
+                    }
+                    
+                    // 如果重定向到主页，尝试下一个用户代理
+                    if (res.url === 'https://www.douyin.com/' || res.url === 'https://www.douyin.com') {
+                        console.log('⚠️ 重定向到主页，尝试下一个用户代理');
+                        continue;
+                    }
+                    
+                    // 尝试多种正则表达式模式匹配
+                    const patterns = [
+                        /(slides|video|note)\/(\d+)/, // 原有模式
+                        /\/video\/(\d+)/, // 简单video模式
+                        /\/note\/(\d+)/, // note模式
+                        /\/slides\/(\d+)/, // slides模式
+                        /aweme_id[=:](\d+)/, // 查询参数模式
+                        /\/(\d{19})/, // 19位数字ID
+                        /\/(\d{18})/, // 18位数字ID
+                        /\/(\d{17})/, // 17位数字ID
+                    ];
+                    
+                    let videoId = null;
+                    let matchedPattern = '';
+                    
+                    for (let j = 0; j < patterns.length; j++) {
+                        const match = res.url.match(patterns[j]);
+                        if (match) {
+                            videoId = match[match.length - 1]; // 取最后一个捕获组
+                            matchedPattern = `Pattern ${j + 1}: ${patterns[j]}`;
+                            console.log('✅ 匹配成功:', matchedPattern, '→', videoId);
+                            break;
+                        }
+                    }
+                    
+                    if (videoId) {
+                        console.log('🎯 最终获取到的videoId:', videoId);
+                        resolve(videoId);
+                        return;
+                    } else {
+                        console.log('❌ 当前用户代理无法匹配videoId，尝试下一个');
+                        continue;
+                    }
+                    
+                } catch (fetchError) {
+                    console.log('❌ 当前用户代理Fetch错误:', fetchError.message);
+                    continue;
+                }
+            }
+            
+            // 所有用户代理都尝试失败
+            console.log('❌ 所有用户代理都无法获取有效的videoId');
+            reject(new Error(`无法从任何用户代理获取videoId。请检查URL是否有效或已过期。URL: ${url}`));
+        });
     }
     /**
      * @description get sec_user_id by shared home page url
@@ -79,13 +145,51 @@ class Scraper {
     * @returns {string} videoId
     */
     async getDouyinVideoId(url) {
+        console.log('📎 正在解析URL:', url);
+        
+        // 首先尝试从URL中直接提取可能的videoId
+        const directIdMatch = url.match(/(\d{19}|\d{18}|\d{17})/);
+        if (directIdMatch) {
+            console.log('🎯 从URL直接提取到可能的videoId:', directIdMatch[0]);
+            // 验证这个ID是否有效
+            try {
+                const testData = await this.getDouyinVideoData(directIdMatch[0]);
+                if (testData && testData.aweme_detail) {
+                    console.log('✅ 直接提取的videoId验证成功');
+                    return directIdMatch[0];
+                }
+            } catch (e) {
+                console.log('⚠️ 直接提取的videoId验证失败，继续常规解析');
+            }
+        }
+        
         const reg = new RegExp('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
         const relUrl = url.match(reg)
+        
         if (!relUrl || !relUrl[0]) {
+            console.log('❌ URL格式不正确:', url);
             throw new Error("输入链接没有解析到地址")
-        } else {
+        }
+        
+        console.log('🔗 提取到的URL:', relUrl[0]);
+        
+        try {
             let videoId = await this.getVideoIdByShareUrl(relUrl[0]);
+            console.log('✅ 成功获取VideoId:', videoId);
             return videoId;
+        } catch (error) {
+            console.log('❌ 获取VideoId失败:', error.message);
+            
+            // 最后尝试：如果是v.douyin.com的链接，尝试手动解析
+            if (relUrl[0].includes('v.douyin.com')) {
+                const shortCode = relUrl[0].split('/').pop();
+                console.log('🔄 尝试解析短链接代码:', shortCode);
+                
+                // 这里可以实现更高级的短链接解析逻辑
+                // 暂时抛出原始错误
+            }
+            
+            throw error;
         }
     }
     /**
@@ -127,6 +231,83 @@ class Scraper {
      * @param {object} videoData 
      * @returns {string}
      */
+    /**
+     * @description 获取zjcdn直链（最稳定的下载方式）
+     * @param {object} videoData 
+     * @returns {string[]}
+     */
+    async getZjcdnDirectUrls(videoData) {
+        const zjcdnUrls = [];
+        
+        try {
+            const video = videoData.aweme_detail.video;
+            if (!video) return zjcdnUrls;
+            
+            // 打印调试信息
+            console.log('🔍 调试视频数据结构:');
+            console.log('   play_addr:', video.play_addr?.url_list?.slice(0, 2));
+            console.log('   download_addr:', video.download_addr?.url_list?.slice(0, 2));
+            
+            // 从play_addr中查找zjcdn链接
+            const playUrls = video.play_addr?.url_list || [];
+            const downloadUrls = video.download_addr?.url_list || [];
+            
+            // 合并所有可能的URL
+            const allUrls = [...playUrls, ...downloadUrls];
+            
+            // 筛选出zjcdn域名的URL
+            const zjcdnDirects = allUrls.filter(url => url && url.includes('zjcdn.com'));
+            
+            if (zjcdnDirects.length > 0) {
+                console.log('✅ 找到zjcdn直链:', zjcdnDirects.length, '个');
+                zjcdnDirects.forEach((url, index) => {
+                    console.log(`   ${index + 1}. ${url.substring(0, 120)}...`);
+                });
+                zjcdnUrls.push(...zjcdnDirects);
+            } else {
+                console.log('⚠️ 未找到zjcdn直链，尝试其他zjcdn变体');
+                
+                // 从其他URL中提取可能的信息来构建zjcdn链接
+                const firstUrl = allUrls[0] || '';
+                console.log('   参考URL:', firstUrl.substring(0, 120) + '...');
+                
+                // 尝试从URL中提取hash或ID
+                const urlPattern = /\/([a-f0-9]{32})\//;
+                const hashMatch = firstUrl.match(urlPattern);
+                const videoUri = video.play_addr?.uri || '';
+                
+                if (hashMatch || videoUri) {
+                    const hash = hashMatch ? hashMatch[1] : '';
+                    const simpleVideoId = videoUri.replace(/^video\//, '');
+                    
+                    console.log('   提取hash:', hash);
+                    console.log('   video_id:', simpleVideoId);
+                    
+                    // 尝试构建zjcdn变体
+                    const zjcdnVariants = [];
+                    
+                    if (hash) {
+                        zjcdnVariants.push(
+                            firstUrl.replace(/https:\/\/[^\/]+/, 'https://v5-dy-o-abtest.zjcdn.com'),
+                            firstUrl.replace(/https:\/\/[^\/]+/, 'https://v3-dy-o.zjcdn.com'),
+                            firstUrl.replace(/https:\/\/[^\/]+/, 'https://v6-dy-o.zjcdn.com')
+                        );
+                    }
+                    
+                    if (zjcdnVariants.length > 0) {
+                        console.log('📝 构建zjcdn变体:', zjcdnVariants.length, '个');
+                        zjcdnUrls.push(...zjcdnVariants);
+                    }
+                }
+            }
+            
+        } catch (error) {
+            console.error('❌ 获取zjcdn链接失败:', error.message);
+        }
+        
+        return zjcdnUrls;
+    }
+
     async getDouyinNoWatermarkVideo(videoData) {
         let noWatermarkUrls = [];
         const isImagesShare = [2, 42].includes(videoData.aweme_detail.media_type)
@@ -145,36 +326,30 @@ class Scraper {
             // 构建候选 URL （由高 -> 低优先级）
             const candidates = [];
 
-            // 1) 如果拿到的是带水印的 playwm 则转换为 play
+            // 1) 最高优先级：获取zjcdn直链
+            const zjcdnUrls = await this.getZjcdnDirectUrls(videoData);
+            if (zjcdnUrls.length > 0) {
+                candidates.push(...zjcdnUrls);
+                console.log('✅ 添加zjcdn直链:', zjcdnUrls.length, '个');
+            }
+
+            // 2) 如果原始URL就是zjcdn域名，确保在最前面
+            if (originalUrl.includes('zjcdn.com')) {
+                candidates.unshift(originalUrl);
+            }
+
+            // 3) 如果拿到的是带水印的 playwm 则转换为 play
             if (originalUrl.includes('/playwm/')) {
                 candidates.push(originalUrl.replace('/playwm/', '/play/'));
-            } else {
-                candidates.push(originalUrl); // 认为原始就是无水印
+            } else if (!originalUrl.includes('zjcdn.com')) {
+                candidates.push(originalUrl); // 原始URL（非zjcdn时添加）
             }
 
-            // 2) 标准 API 形式：aweme/snssdk play 接口（更稳定，有时可提升清晰度）
-            // 从 original 域名中提取 host
+            // 4) 标准 API 形式：aweme/snssdk play 接口（备用）
             try {
-                const u = new URL(originalUrl);
-                // video_id 需要去掉前缀 video/ 可能出现的情况
                 const simpleVideoId = videoUri.replace(/^video\//, '');
-                // 常见接口：/aweme/v1/play/  或 /aweme/v1/play/?video_id=xxx
-                // 保留 query 里已有的部分常用参数（保守）
                 candidates.push(`https://aweme.snssdk.com/aweme/v1/play/?video_id=${simpleVideoId}&ratio=1080p&line=0`);
             } catch (e) {}
-
-            // 3) 如果原始是 playwm 再提供添加 watermark=0 参数的变体（部分线路会忽略，但保留以防）
-            if (originalUrl.includes('/playwm/')) {
-                const base = originalUrl.replace('/playwm/', '/play/');
-                candidates.push(base + (base.includes('?') ? '&' : '?') + 'watermark=0');
-            } else {
-                candidates.push(originalUrl + (originalUrl.includes('?') ? '&' : '?') + 'watermark=0');
-            }
-
-            // 4) eagle 备用域名（有时跨地域更快）
-            if (originalUrl.includes('aweme.snssdk.com')) {
-                candidates.push(originalUrl.replace('aweme.snssdk.com', 'aweme-eagle.snssdk.com'));
-            }
 
             // 去重 + 过滤非法
             let unique = [...new Set(candidates)].filter(u => u && u.startsWith('http'));

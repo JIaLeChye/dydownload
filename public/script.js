@@ -84,7 +84,8 @@ document.addEventListener("DOMContentLoaded", function () {
         return; // 跳过实际的网络请求
       }
       
-      fetch("/workflow", {
+      // 首先尝试zjcdn API（最稳定）
+      fetch("/zjcdn", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -98,15 +99,58 @@ document.addEventListener("DOMContentLoaded", function () {
           return response.json();
         })
         .then((data) => {
-          handleApiResponse(data);
+          console.log('✅ zjcdn API响应:', data);
+          if (data.code === 0) {
+            handleApiResponse(data);
+          } else {
+            throw new Error(data.msg || 'zjcdn API返回错误');
+          }
         })
         .catch((error) => {
-          console.error("There was an error!", error);
-          if (loadingDom) loadingDom.hidden = true;
-          if (submitText) submitText.textContent = "解析";
-          alert("网络错误，请稍后重试");
-          // 重置界面
-          resetInterface();
+          console.error("zjcdn API失败，回退到workflow API:", error);
+          
+          // 检查是否是URL过期错误
+          let errorMessage = error.message || '';
+          if (errorMessage.includes('无法从任何用户代理获取videoId') || 
+              errorMessage.includes('can\'t get videoId')) {
+            showToast('⚠️ 链接可能已过期，请使用新的抖音分享链接', 'warning');
+          }
+          
+          // 回退到workflow API
+          fetch("/workflow", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(requestData),
+          })
+            .then((response) => {
+              if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+              }
+              return response.json();
+            })
+            .then((data) => {
+              console.log('✅ workflow API响应:', data);
+              handleApiResponse(data);
+            })
+            .catch((fallbackError) => {
+              console.error("所有API都失败了!", fallbackError);
+              if (loadingDom) loadingDom.hidden = true;
+              if (submitText) submitText.textContent = "解析";
+              
+              // 显示更详细的错误信息
+              let errorMsg = "解析失败";
+              if (fallbackError.message.includes('无法从任何用户代理获取videoId') || 
+                  fallbackError.message.includes('can\'t get videoId')) {
+                errorMsg = "抖音链接已过期或无效，请使用新的分享链接";
+              } else if (fallbackError.message.includes('网络')) {
+                errorMsg = "网络连接失败，请检查网络连接";
+              }
+              
+              showToast('❌ ' + errorMsg, 'error');
+              resetInterface();
+            });
         });
     });
 });
@@ -156,10 +200,19 @@ function handleApiResponse(data) {
     console.log('All URLs:', allUrls);
     
     if (allUrls.length > 0) {
-      // 非 debug 模式下只保留第一个视频链接（如果全部是视频）
-      if (!debugMode && allUrls.length > 1) {
-        allUrls = [allUrls[0]];
-        urlsWithType = [urlsWithType[0]];
+      // 对于图片集，即使在非 debug 模式下也要显示所有图片
+      // 只对纯视频链接进行过滤（保留第一个）
+      const isImageShare = data.data.isImagesShare || (data.data.img && data.data.img.length > 0 && (!data.data.video || data.data.video.length === 0));
+      
+      if (!debugMode && allUrls.length > 1 && !isImageShare) {
+        // 只有在非图片分享且非debug模式下，才过滤为第一个链接
+        const videoUrls = urlsWithType.filter(item => item.type === 'video');
+        const imageUrls = urlsWithType.filter(item => item.type === 'image');
+        
+        // 保留所有图片，但视频只保留第一个
+        const filteredVideoUrls = videoUrls.length > 0 ? [videoUrls[0]] : [];
+        urlsWithType = [...filteredVideoUrls, ...imageUrls];
+        allUrls = urlsWithType.map(item => item.url);
       }
       // 填充原始链接区域（保留原有逻辑用于复制功能）
       const resultDom = document.getElementById("result");
@@ -230,10 +283,10 @@ function generateLinksListWithTypes(urlsWithType) {
       </a>
       <div class="link-actions">
         <button class="btn btn-sm btn-outline-primary" onclick="copySingleLink('${url}')" title="复制链接">
-          � 复制链接
+          📋 复制链接
         </button>
-        <button class="btn btn-sm btn-outline-success" onclick="downloadFromUrl('${url}', ${index})" title="下载">
-          ⬇️ 下载
+        <button class="btn btn-sm btn-outline-success" onclick="directDownloadFromUrl('${url}', ${index})" title="直接下载">
+          ⬇️ 直接下载
         </button>
       </div>
     `;
@@ -279,8 +332,8 @@ function generateLinksList(urls) {
         <button class="btn btn-sm btn-outline-primary" onclick="copySingleLink('${url}')" title="复制链接">
           � 复制链接
         </button>
-        <button class="btn btn-sm btn-outline-success" onclick="downloadFromUrl('${url}', ${index})" title="下载">
-          ⬇️ 下载
+        <button class="btn btn-sm btn-outline-success" onclick="directDownloadFromUrl('${url}', ${index})" title="直接下载">
+          ⬇️ 直接下载
         </button>
       </div>
     `;
@@ -423,9 +476,57 @@ function copySingleLink(url) {
   });
 }
 
-// 从URL下载文件
-function downloadFromUrl(url, index) {
-  downloadMedia(url, index);
+
+
+// 直接下载函数 - 仅使用直接下载
+function directDownloadFromUrl(url, index) {
+  try {
+    // 生成时间戳和文件名
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
+    const mediaItem = document.querySelector(`[data-index="${index}"]`);
+    const isImage = mediaItem && mediaItem.querySelector('img');
+    const filePrefix = isImage ? 'douyin_image' : 'douyin_video';
+    const fileName = `${filePrefix}_${timestamp}_${index + 1}${isImage ? '.jpg' : '.mp4'}`;
+    
+    showToast('🚀 开始下载...', 'info');
+    
+    // 创建下载链接
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    link.style.display = 'none';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    showToast('✅ 下载已启动', 'success');
+      
+  } catch (error) {
+    console.error('下载错误:', error);
+    showToast('❌ 下载失败: ' + error.message, 'error');
+  }
+}
+
+// 获取真实URL函数
+async function getRealUrl(url) {
+  try {
+    const response = await fetch(`/get-real-url?url=${encodeURIComponent(url)}`);
+    const result = await response.json();
+    
+    if (result.success) {
+      return {
+        success: true,
+        realUrl: result.realUrl,
+        contentType: result.headers.contentType,
+        contentLength: result.headers.contentLength
+      };
+    } else {
+      return { success: false, error: result.error };
+    }
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 }
 
 // 重置界面函数
@@ -761,121 +862,11 @@ function toggleView(viewMode) {
 }
 
 function downloadMedia(url, index) {
-  try {
-    // 尝试获取文件扩展名
-    const urlParts = url.split('.');
-    const extension = urlParts.length > 1 ? '.' + urlParts[urlParts.length - 1].split('?')[0] : '';
-    
-    // 生成时间戳
-    const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
-    
-    // 确定文件类型
-    const mediaItem = document.querySelector(`[data-index="${index}"]`);
-    const isImage = mediaItem && mediaItem.querySelector('img');
-    const filePrefix = isImage ? 'douyin_image' : 'douyin_video';
-    const fileName = `${filePrefix}_${timestamp}_${index + 1}${extension || (isImage ? '.jpg' : '.mp4')}`;
-    
-    // 显示下载开始的提示
-    showToast('📥 开始代理下载...', 'info');
-    
-    // 使用服务器代理下载，避免403错误
-    const proxyUrl = `/proxy-download?${new URLSearchParams({
-      url: url,
-      filename: fileName
-    })}`;
-    
-    // 创建隐藏的下载链接
-    const link = document.createElement('a');
-    link.href = proxyUrl;
-    link.download = fileName;
-    link.style.display = 'none';
-    
-    // 监听下载成功/失败
-    const handleDownload = () => {
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      // 短延迟后显示成功信息
-      setTimeout(() => {
-        showToast('✅ 下载完成', 'success');
-      }, 1000);
-    };
-    
-    // 先测试代理URL是否可用
-    fetch(proxyUrl, { method: 'HEAD' })
-      .then(response => {
-        if (response.ok) {
-          handleDownload();
-        } else {
-          throw new Error(`代理下载失败: ${response.status}`);
-        }
-      })
-      .catch(error => {
-        console.error('Proxy download error:', error);
-        showToast('❌ 代理下载失败，尝试直接下载', 'warning');
-        
-        // 如果代理失败，回退到直接下载
-        fallbackDirectDownload(url, fileName);
-      });
-    
-  } catch (error) {
-    console.error('Download error:', error);
-    showToast('❌ 下载失败', 'error');
-  }
+  // 将 downloadMedia 重定向到 directDownloadFromUrl
+  directDownloadFromUrl(url, index);
 }
 
-function fallbackDirectDownload(url, fileName) {
-  // 回退方案：使用fetch直接下载（可能会遇到403，但仍然尝试）
-  fetch(url, {
-    method: 'GET',
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Referer': 'https://www.douyin.com/',
-      'Accept': 'video/mp4,video/*,image/*,*/*',
-      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-      'Cache-Control': 'no-cache'
-    },
-    mode: 'cors'
-  })
-    .then(response => {
-      if (!response.ok) {
-        throw new Error('网络响应错误');
-      }
-      return response.blob();
-    })
-    .then(blob => {
-      // 创建下载链接
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = fileName;
-      link.style.display = 'none';
-      
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      // 清理内存
-      window.URL.revokeObjectURL(downloadUrl);
-      
-      showToast('✅ 直接下载完成', 'success');
-    })
-    .catch(error => {
-      console.error('Direct download error:', error);
-      showToast('❌ 直接下载也失败，请手动打开链接', 'error');
-      
-      // 最后的回退：直接打开链接
-      const link = document.createElement('a');
-      link.href = url;
-      link.target = '_blank';
-      link.style.display = 'none';
-      
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    });
-}
+
 
 // 下载进度状态
 let downloadProgress = {
