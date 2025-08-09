@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>下载功能测试</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        button { margin: 10px 5px; padding: 10px 15px; }
+        .success { color: green; }
+        .error { color: red; }
+        .warning { color: orange; }
+        #log { background: #f5f5f5; padding: 10px; margin: 10px 0; height: 300px; overflow-y: auto; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <h1>抖音下载功能测试</h1>
+    
+    <div class="test-section">
+        <h3>测试视频URL:</h3>
+        <p><code id="test-url">https://aweme.snssdk.com/aweme/v1/play/?video_id=v0d00fg10000d2aq08vog65v0b58usm0&ratio=1080p&line=0</code></p>
+        <p style="color: #666; font-size: 0.9em;">
+            <strong>注意：</strong>如果测试失败，可能是因为：<br>
+            1. 测试URL已过期（抖音链接有时效性）<br>
+            2. 需要使用新的抖音分享链接进行测试<br>
+            3. 可以尝试直接测试videoId功能
+        </p>
+        
+        <button onclick="testGetRealUrl()">🔍 测试获取真实URL</button>
+        <button onclick="testZjcdnApi()">🚀 测试zjcdn直链API</button>
+        <button onclick="testDirectDownload()">⬇️ 测试直接下载</button>
+        <button onclick="testVideoId()">🎯 测试VideoID（绕过URL解析）</button>
+        <button onclick="clearLog()">🗑️ 清空日志</button>
+    </div>
+    
+    <div class="test-section">
+        <h3>测试日志:</h3>
+        <div id="log"></div>
+    </div>
+
+    <script>
+        const testUrl = document.getElementById('test-url').textContent;
+        const log = document.getElementById('log');
+        
+        function addLog(message, type = 'info') {
+            const time = new Date().toLocaleTimeString();
+            const className = type === 'success' ? 'success' : type === 'error' ? 'error' : type === 'warning' ? 'warning' : '';
+            log.innerHTML += `<div class="${className}">[${time}] ${message}</div>`;
+            log.scrollTop = log.scrollHeight;
+        }
+        
+        function clearLog() {
+            log.innerHTML = '';
+        }
+        
+        async function testZjcdnApi() {
+            addLog('🚀 开始测试zjcdn直链API...');
+            try {
+                const response = await fetch('/zjcdn', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: 'https://v.douyin.com/test/' }) // 使用测试URL
+                });
+                
+                if (!response.ok) {
+                    addLog('❌ zjcdn API请求失败: ' + response.status, 'error');
+                    return;
+                }
+                
+                const result = await response.json();
+                
+                if (result.code === 0) {
+                    addLog('✅ zjcdn API调用成功:', 'success');
+                    addLog(`   方法: ${result.data.method}`);
+                    addLog(`   视频链接数量: ${result.data.video.length}`);
+                    addLog(`   图片链接数量: ${result.data.img.length}`);
+                    addLog(`   是否图片分享: ${result.data.isImagesShare}`);
+                    
+                    if (result.data.video.length > 0) {
+                        addLog('📹 视频链接:');
+                        result.data.video.forEach((url, index) => {
+                            const isZjcdn = url.includes('zjcdn.com');
+                            addLog(`   ${index + 1}. ${isZjcdn ? '[ZJCDN]' : '[OTHER]'} ${url.substring(0, 80)}...`);
+                        });
+                    }
+                    
+                } else {
+                    addLog('❌ zjcdn API返回错误: ' + result.msg, 'error');
+                }
+                
+            } catch (error) {
+                addLog('❌ zjcdn API测试失败: ' + error.message, 'error');
+            }
+        }
+        
+        async function testGetRealUrl() {
+            addLog('🔍 开始测试获取真实URL...');
+            try {
+                const response = await fetch(`/get-real-url?url=${encodeURIComponent(testUrl)}`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    addLog('✅ 获取真实URL成功:', 'success');
+                    addLog(`   原始URL: ${result.originalUrl.substring(0, 80)}...`);
+                    addLog(`   真实URL: ${result.realUrl.substring(0, 80)}...`);
+                    addLog(`   内容类型: ${result.headers.contentType}`);
+                    addLog(`   文件大小: ${result.headers.contentLength} bytes`);
+                    addLog(`   是否重定向: ${result.redirected}`);
+                } else {
+                    addLog('❌ 获取真实URL失败: ' + result.error, 'error');
+                }
+            } catch (error) {
+                addLog('❌ 请求失败: ' + error.message, 'error');
+            }
+        }
+        
+        async function testDirectDownload() {
+            addLog('⬇️ 开始测试直接下载...');
+            const filename = 'test_direct_video.mp4';
+            
+            try {
+                // 测试直接下载URL
+                const directUrl = `/direct-download?${new URLSearchParams({
+                    url: testUrl,
+                    filename: filename
+                })}`;
+                
+                addLog('🔗 直接下载URL: ' + directUrl);
+                
+                // 创建下载链接
+                const link = document.createElement('a');
+                link.href = directUrl;
+                link.download = filename;
+                link.style.display = 'none';
+                
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                addLog('🚀 直接下载已触发', 'success');
+                
+            } catch (error) {
+                addLog('❌ 直接下载失败: ' + error.message, 'error');
+            }
+        }
+        
+        async function testVideoId() {
+            addLog('🎯 开始测试VideoID功能（绕过URL解析）...');
+            const testVideoId = '7000000000000000000'; // 示例videoId
+            
+            try {
+                const response = await fetch('/test-videoid', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ videoId: testVideoId })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    addLog('✅ VideoID测试成功:', 'success');
+                    addLog(`   VideoId: ${result.videoId}`);
+                    addLog(`   标题: ${result.title}`);
+                    addLog(`   作者: ${result.author}`);
+                    addLog(`   媒体类型: ${result.mediaType}`);
+                    addLog(`   包含视频: ${result.hasVideo}`);
+                    addLog(`   包含图片: ${result.hasImages}`);
+                } else {
+                    addLog('❌ VideoID测试失败: ' + result.error, 'error');
+                }
+                
+            } catch (error) {
+                addLog('❌ VideoID测试出错: ' + error.message, 'error');
+            }
+        }
+        
+        // 页面加载时显示欢迎信息
+        addLog('🎬 抖音下载功能测试页面已加载');
+        addLog('📝 点击上方按钮测试不同的下载方法');
+        addLog('💡 如果URL测试失败，可能是链接过期，尝试使用VideoID测试验证基本功能');
+    </script>
+</body>
+</html>

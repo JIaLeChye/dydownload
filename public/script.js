@@ -26,6 +26,46 @@ themeToggle.addEventListener('click', function() {
   }
 });
 
+// 自动调整 textarea 高度
+function autoResize(textarea) {
+  // 重置高度以获取正确的 scrollHeight
+  textarea.style.height = 'auto';
+  
+  // 计算最小高度（约3行）和最大高度（约10行）
+  const minHeight = 96; // 6rem = 96px (约3行)
+  const maxHeight = 240; // 15rem = 240px (约10行)
+  
+  // 获取内容需要的高度
+  const scrollHeight = textarea.scrollHeight;
+  
+  // 设置高度，在最小值和最大值之间
+  const newHeight = Math.max(minHeight, Math.min(scrollHeight, maxHeight));
+  textarea.style.height = newHeight + 'px';
+}
+
+// 初始化 textarea 自动调整功能
+document.addEventListener('DOMContentLoaded', function() {
+  const videoUrlTextarea = document.getElementById('videoUrl');
+  
+  if (videoUrlTextarea) {
+    // 监听输入事件
+    videoUrlTextarea.addEventListener('input', function() {
+      autoResize(this);
+    });
+    
+    // 监听粘贴事件
+    videoUrlTextarea.addEventListener('paste', function() {
+      // 粘贴后稍微延迟调整高度，确保内容已经粘贴完成
+      setTimeout(() => {
+        autoResize(this);
+      }, 10);
+    });
+    
+    // 初始调整高度
+    autoResize(videoUrlTextarea);
+  }
+});
+
 document.addEventListener("DOMContentLoaded", function () {
   // 添加测试模式 - 直接显示原始链接区域进行测试
   const testMode = false; // 设置为 true 来启用测试模式
@@ -84,7 +124,8 @@ document.addEventListener("DOMContentLoaded", function () {
         return; // 跳过实际的网络请求
       }
       
-      fetch("/workflow", {
+      // 首先尝试zjcdn API（最稳定）
+      fetch("/zjcdn", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -98,15 +139,58 @@ document.addEventListener("DOMContentLoaded", function () {
           return response.json();
         })
         .then((data) => {
-          handleApiResponse(data);
+          console.log('✅ zjcdn API响应:', data);
+          if (data.code === 0) {
+            handleApiResponse(data);
+          } else {
+            throw new Error(data.msg || 'zjcdn API返回错误');
+          }
         })
         .catch((error) => {
-          console.error("There was an error!", error);
-          if (loadingDom) loadingDom.hidden = true;
-          if (submitText) submitText.textContent = "解析";
-          alert("网络错误，请稍后重试");
-          // 重置界面
-          resetInterface();
+          console.error("zjcdn API失败，回退到workflow API:", error);
+          
+          // 检查是否是URL过期错误
+          let errorMessage = error.message || '';
+          if (errorMessage.includes('无法从任何用户代理获取videoId') || 
+              errorMessage.includes('can\'t get videoId')) {
+            showToast('⚠️ 链接可能已过期，请使用新的抖音分享链接', 'warning');
+          }
+          
+          // 回退到workflow API
+          fetch("/workflow", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(requestData),
+          })
+            .then((response) => {
+              if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+              }
+              return response.json();
+            })
+            .then((data) => {
+              console.log('✅ workflow API响应:', data);
+              handleApiResponse(data);
+            })
+            .catch((fallbackError) => {
+              console.error("所有API都失败了!", fallbackError);
+              if (loadingDom) loadingDom.hidden = true;
+              if (submitText) submitText.textContent = "解析";
+              
+              // 显示更详细的错误信息
+              let errorMsg = "解析失败";
+              if (fallbackError.message.includes('无法从任何用户代理获取videoId') || 
+                  fallbackError.message.includes('can\'t get videoId')) {
+                errorMsg = "抖音链接已过期或无效，请使用新的分享链接";
+              } else if (fallbackError.message.includes('网络')) {
+                errorMsg = "网络连接失败，请检查网络连接";
+              }
+              
+              showToast('❌ ' + errorMsg, 'error');
+              resetInterface();
+            });
         });
     });
 });
@@ -123,6 +207,7 @@ function handleApiResponse(data) {
   console.log('API Response:', data);
   
   if (data.code === 0 && data.data) {
+    const debugMode = !!data.data.debugMode;
     let allUrls = [];
     let urlsWithType = []; // 新增：带类型信息的URL数组
     
@@ -155,6 +240,20 @@ function handleApiResponse(data) {
     console.log('All URLs:', allUrls);
     
     if (allUrls.length > 0) {
+      // 对于图片集，即使在非 debug 模式下也要显示所有图片
+      // 只对纯视频链接进行过滤（保留第一个）
+      const isImageShare = data.data.isImagesShare || (data.data.img && data.data.img.length > 0 && (!data.data.video || data.data.video.length === 0));
+      
+      if (!debugMode && allUrls.length > 1 && !isImageShare) {
+        // 只有在非图片分享且非debug模式下，才过滤为第一个链接
+        const videoUrls = urlsWithType.filter(item => item.type === 'video');
+        const imageUrls = urlsWithType.filter(item => item.type === 'image');
+        
+        // 保留所有图片，但视频只保留第一个
+        const filteredVideoUrls = videoUrls.length > 0 ? [videoUrls[0]] : [];
+        urlsWithType = [...filteredVideoUrls, ...imageUrls];
+        allUrls = urlsWithType.map(item => item.url);
+      }
       // 填充原始链接区域（保留原有逻辑用于复制功能）
       const resultDom = document.getElementById("result");
       if (resultDom) {
@@ -162,7 +261,7 @@ function handleApiResponse(data) {
       }
       
       // 生成分开的链接列表（使用类型信息）
-      generateLinksListWithTypes(urlsWithType);
+  generateLinksListWithTypes(urlsWithType);
       
       // 显示原始链接区域，但复制按钮保持隐藏直到展开
       const rawLinksSection = document.getElementById("rawLinks");
@@ -177,12 +276,15 @@ function handleApiResponse(data) {
       // 不自动显示复制按钮，等到用户点击展开时才显示
       if (copyDom) copyDom.hidden = true;
       
-      // 显示媒体预览
-      displayMediaPreview(allUrls);
+  // 显示媒体预览（非 debug 只显示一条也兼容）
+  displayMediaPreview(allUrls);
       
       // 移动端友好的反馈
       if (window.innerWidth <= 768) {
         document.getElementById("mediaPreview").scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      if (!debugMode) {
+        console.log('单链接模式（非debug），如需查看所有候选：添加 ?debug=1 或设置环境变量 DEBUG_VIDEO_URLS=1');
       }
     } else {
       console.error('No URLs found in response');
@@ -221,10 +323,10 @@ function generateLinksListWithTypes(urlsWithType) {
       </a>
       <div class="link-actions">
         <button class="btn btn-sm btn-outline-primary" onclick="copySingleLink('${url}')" title="复制链接">
-          � 复制链接
+          📋 复制链接
         </button>
-        <button class="btn btn-sm btn-outline-success" onclick="downloadFromUrl('${url}', ${index})" title="下载">
-          ⬇️ 下载
+        <button class="btn btn-sm btn-outline-success" onclick="downloadMedia('${url}', ${index})" title="直接下载">
+          ⬇️ 直接下载
         </button>
       </div>
     `;
@@ -270,8 +372,8 @@ function generateLinksList(urls) {
         <button class="btn btn-sm btn-outline-primary" onclick="copySingleLink('${url}')" title="复制链接">
           � 复制链接
         </button>
-        <button class="btn btn-sm btn-outline-success" onclick="downloadFromUrl('${url}', ${index})" title="下载">
-          ⬇️ 下载
+        <button class="btn btn-sm btn-outline-success" onclick="downloadMedia('${url}', ${index})" title="直接下载">
+          ⬇️ 直接下载
         </button>
       </div>
     `;
@@ -414,9 +516,132 @@ function copySingleLink(url) {
   });
 }
 
-// 从URL下载文件
-function downloadFromUrl(url, index) {
-  downloadMedia(url, index);
+
+
+// 直接下载函数 - 仅使用直接下载
+function downloadMedia(url, index) {
+  try {
+    // 尝试获取文件扩展名
+    const urlParts = url.split('.');
+    const extension = urlParts.length > 1 ? '.' + urlParts[urlParts.length - 1].split('?')[0] : '';
+
+    // 生成时间戳
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
+
+    // 确定文件类型
+    const mediaItem = document.querySelector(`[data-index="${index}"]`);
+    const isImage = mediaItem && mediaItem.querySelector('img');
+    const filePrefix = isImage ? 'douyin_image' : 'douyin_video';
+    const fileName = `${filePrefix}_${timestamp}_${index + 1}${extension}`;
+
+    // 显示下载开始的提示
+    showToast('📥 开始下载...', 'info');
+
+    // 使用 fetch 下载文件
+    fetch(url)
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('网络响应错误');
+        }
+        return response.blob();
+      })
+      .then(blob => {
+        // 创建下载链接
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = fileName;
+        link.style.display = 'none';
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // 清理内存
+        window.URL.revokeObjectURL(downloadUrl);
+        
+        showToast('✅ 下载完成', 'success');
+      })
+      .catch(error => {
+        console.error('直接下载失败:', error);
+        showToast('⚠️ 直接下载失败，尝试服务器代理下载...', 'warning');
+        
+        // 如果下载失败，则回退到服务器代理下载
+        proxyDownload(url, fileName);
+      });
+    
+  } catch (error) {
+    console.error('下载初始化失败:', error);
+    showToast('❌ 下载失败，尝试服务器代理下载...', 'warning');
+    
+    // 如果连初始化都失败，直接使用代理下载
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
+    const fileName = `douyin_media_${timestamp}_${index + 1}.mp4`;
+    proxyDownload(url, fileName);
+  }
+}
+
+function proxyDownload(url, fileName) {
+  try {
+    // 使用服务器代理下载
+    console.log('使用服务器代理下载:', fileName);
+    
+    // 构建代理下载URL
+    const proxyUrl = `/proxy-download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(fileName)}`;
+    
+    // 创建下载链接
+    const link = document.createElement('a');
+    link.href = proxyUrl;
+    link.download = fileName;
+    link.style.display = 'none';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    showToast('🔄 使用服务器代理下载', 'info');
+    
+  } catch (error) {
+    console.error('代理下载也失败:', error);
+    showToast('❌ 代理下载失败，尝试直接打开链接', 'error');
+    
+    // 最后的回退方案：直接打开链接
+    finalFallbackDownload(url, fileName);
+  }
+}
+
+function finalFallbackDownload(url, fileName) {
+  // 最终回退方案：直接创建下载链接
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.target = '_blank';
+  link.style.display = 'none';
+  
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+// 获取真实URL函数
+async function getRealUrl(url) {
+  try {
+    const response = await fetch(`/get-real-url?url=${encodeURIComponent(url)}`);
+    const result = await response.json();
+    
+    if (result.success) {
+      return {
+        success: true,
+        realUrl: result.realUrl,
+        contentType: result.headers.contentType,
+        contentLength: result.headers.contentLength
+      };
+    } else {
+      return { success: false, error: result.error };
+    }
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 }
 
 // 重置界面函数
@@ -535,27 +760,47 @@ function displayMediaPreview(urls) {
 
 function checkMediaType(url, index) {
   return new Promise((resolve) => {
-    // 先通过URL扩展名进行简单判断
+    // 智能URL分析 - 基于URL特征判断媒体类型，避免403错误
     const urlLower = url.toLowerCase();
-    const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
-    const videoExtensions = ['.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv'];
     
-    // 检查URL是否包含明确的扩展名
-    const isImageByUrl = imageExtensions.some(ext => urlLower.includes(ext));
-    const isVideoByUrl = videoExtensions.some(ext => urlLower.includes(ext));
+    // 视频URL特征识别
+    const videoIndicators = [
+      '.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', // 扩展名
+      'mime_type=video', '/video/', // 路径特征
+      'zjcdn.com', 'tiktokcdn.com', 'ixigua.com', // 抖音视频CDN
+      'v3-dy-o', 'v5-hl-hw-ov', 'v9-dy', 'v26-dy', // 抖音CDN前缀
+      'video_id=', 'aweme_id=', // 视频参数
+      'btag=', 'dy_q=', 'feature_id=' // 抖音特有参数
+    ];
     
-    if (isVideoByUrl) {
+    // 图片URL特征识别
+    const imageIndicators = [
+      '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', // 扩展名
+      'douyinpic.com', 'p3-pc-sign', 'p1-pc-sign', // 抖音图片CDN
+      'aweme-avatar', 'tos-cn-p-', // 图片路径特征
+      'image/', 'pic/', 'avatar/' // 通用图片路径
+    ];
+    
+    // 检查视频特征
+    const isVideo = videoIndicators.some(indicator => urlLower.includes(indicator));
+    
+    // 检查图片特征
+    const isImage = imageIndicators.some(indicator => urlLower.includes(indicator));
+    
+    if (isVideo) {
+      // 识别为视频，直接返回而不进行网络请求
       resolve({
         url: url,
         type: 'video',
         index: index,
-        loaded: true
+        loaded: true,
+        source: 'url-analysis'
       });
       return;
     }
     
-    if (isImageByUrl) {
-      // 对于图片，尝试加载以获取尺寸信息
+    if (isImage) {
+      // 识别为图片，尝试加载获取尺寸（图片通常没有CORS限制）
       const img = new Image();
       img.crossOrigin = "anonymous";
       
@@ -564,9 +809,10 @@ function checkMediaType(url, index) {
           url: url,
           type: 'image',
           index: index,
-          loaded: false
+          loaded: true, // 即使加载失败，也认为是有效图片
+          source: 'url-analysis-timeout'
         });
-      }, 3000);
+      }, 2000); // 缩短超时时间
       
       img.onload = function() {
         clearTimeout(timeout);
@@ -576,7 +822,8 @@ function checkMediaType(url, index) {
           index: index,
           loaded: true,
           width: this.naturalWidth,
-          height: this.naturalHeight
+          height: this.naturalHeight,
+          source: 'image-loaded'
         });
       };
       
@@ -586,7 +833,8 @@ function checkMediaType(url, index) {
           url: url,
           type: 'image',
           index: index,
-          loaded: false
+          loaded: true, // 仍然认为是图片，只是加载失败
+          source: 'image-error'
         });
       };
       
@@ -594,83 +842,26 @@ function checkMediaType(url, index) {
       return;
     }
     
-    // 如果无法通过URL判断，使用HEAD请求检查Content-Type
-    fetch(url, { method: 'HEAD' })
-      .then(response => {
-        const contentType = response.headers.get('content-type');
-        if (contentType) {
-          if (contentType.startsWith('image/')) {
-            // 是图片，加载以获取尺寸
-            const img = new Image();
-            img.crossOrigin = "anonymous";
-            
-            const timeout = setTimeout(() => {
-              resolve({
-                url: url,
-                type: 'image',
-                index: index,
-                loaded: false
-              });
-            }, 3000);
-            
-            img.onload = function() {
-              clearTimeout(timeout);
-              resolve({
-                url: url,
-                type: 'image',
-                index: index,
-                loaded: true,
-                width: this.naturalWidth,
-                height: this.naturalHeight
-              });
-            };
-            
-            img.onerror = function() {
-              clearTimeout(timeout);
-              resolve({
-                url: url,
-                type: 'image',
-                index: index,
-                loaded: false
-              });
-            };
-            
-            img.src = url;
-          } else if (contentType.startsWith('video/')) {
-            resolve({
-              url: url,
-              type: 'video',
-              index: index,
-              loaded: true
-            });
-          } else {
-            // 默认假设是视频
-            resolve({
-              url: url,
-              type: 'video',
-              index: index,
-              loaded: false
-            });
-          }
-        } else {
-          // 无Content-Type，默认假设是视频
-          resolve({
-            url: url,
-            type: 'video',
-            index: index,
-            loaded: false
-          });
-        }
-      })
-      .catch(() => {
-        // 请求失败，默认假设是视频
-        resolve({
-          url: url,
-          type: 'video',
-          index: index,
-          loaded: false
-        });
+    // 如果无法确定类型，根据URL长度和复杂度进行推断
+    if (urlLower.includes('?') && url.length > 200) {
+      // 长URL且有参数，通常是视频
+      resolve({
+        url: url,
+        type: 'video',
+        index: index,
+        loaded: true,
+        source: 'heuristic-video'
       });
+    } else {
+      // 简短URL，可能是图片
+      resolve({
+        url: url,
+        type: 'image',
+        index: index,
+        loaded: true,
+        source: 'heuristic-image'
+      });
+    }
   });
 }
 
@@ -783,76 +974,6 @@ function toggleView(viewMode) {
         displayMediaItems(mediaItems);
       });
   }
-}
-
-function downloadMedia(url, index) {
-  try {
-    // 尝试获取文件扩展名
-    const urlParts = url.split('.');
-    const extension = urlParts.length > 1 ? '.' + urlParts[urlParts.length - 1].split('?')[0] : '';
-    
-    // 生成时间戳
-    const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
-    
-    // 确定文件类型
-    const mediaItem = document.querySelector(`[data-index="${index}"]`);
-    const isImage = mediaItem && mediaItem.querySelector('img');
-    const filePrefix = isImage ? 'douyin_image' : 'douyin_video';
-    const fileName = `${filePrefix}_${timestamp}_${index + 1}${extension}`;
-    
-    // 显示下载开始的提示
-    showToast('📥 开始下载...', 'info');
-    
-    // 使用 fetch 下载文件
-    fetch(url)
-      .then(response => {
-        if (!response.ok) {
-          throw new Error('网络响应错误');
-        }
-        return response.blob();
-      })
-      .then(blob => {
-        // 创建下载链接
-        const downloadUrl = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = downloadUrl;
-        link.download = fileName;
-        link.style.display = 'none';
-        
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        // 清理内存
-        window.URL.revokeObjectURL(downloadUrl);
-        
-        showToast('✅ 下载完成', 'success');
-      })
-      .catch(error => {
-        console.error('Download error:', error);
-        showToast('❌ 下载失败，尝试直接打开链接', 'error');
-        
-        // 如果下载失败，则回退到直接打开链接
-        fallbackDownload(url, fileName);
-      });
-    
-  } catch (error) {
-    console.error('Download error:', error);
-    showToast('❌ 下载失败', 'error');
-  }
-}
-
-function fallbackDownload(url, fileName) {
-  // 回退方案：直接创建下载链接
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName;
-  link.target = '_blank';
-  link.style.display = 'none';
-  
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
 }
 
 // 下载进度状态
