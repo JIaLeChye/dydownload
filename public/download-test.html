@@ -3,132 +3,536 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>下载功能测试</title>
+    <title>抖音下载功能调试控制台</title>
     <style>
-        body { font-family: Arial, sans-serif; padding: 20px; }
-        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
-        button { margin: 10px 5px; padding: 10px 15px; }
-        .success { color: green; }
-        .error { color: red; }
-        .warning { color: orange; }
-        #log { background: #f5f5f5; padding: 10px; margin: 10px 0; height: 300px; overflow-y: auto; font-family: monospace; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+        
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0;
+            height: calc(100vh - 140px); /* 固定主内容区域高度 */
+            max-height: 800px;
+        }
+        
+        .test-panel {
+            padding: 30px;
+            border-right: 1px solid #eee;
+            overflow-y: auto; /* 如果测试面板内容过多也可以滚动 */
+        }
+        
+        .log-panel {
+            padding: 30px;
+            background: #f8f9fa;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; /* 防止整个面板溢出 */
+        }
+        
+        .test-section {
+            margin-bottom: 25px;
+        }
+        
+        .test-section h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 1.3rem;
+            border-left: 4px solid #ff6b6b;
+            padding-left: 15px;
+        }
+        
+        .url-input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e1e8ed;
+            border-radius: 10px;
+            font-size: 1rem;
+            margin-bottom: 15px;
+            transition: all 0.3s ease;
+        }
+        
+        .url-input:focus {
+            outline: none;
+            border-color: #ff6b6b;
+            box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.1);
+        }
+        
+        .button-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .test-btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .test-btn.primary {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            color: white;
+        }
+        
+        .test-btn.secondary {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+        }
+        
+        .test-btn.success {
+            background: linear-gradient(45deg, #00b894, #00a085);
+            color: white;
+        }
+        
+        .test-btn.info {
+            background: linear-gradient(45deg, #0984e3, #74b9ff);
+            color: white;
+        }
+        
+        .test-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        .test-btn:active {
+            transform: translateY(0);
+        }
+        
+        .test-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .clear-btn {
+            width: 100%;
+            background: #ddd;
+            color: #666;
+        }
+        
+        .clear-btn:hover {
+            background: #ccc;
+        }
+        
+        #log {
+            background: #1a1a1a;
+            color: #e6e6e6;
+            padding: 20px;
+            border-radius: 10px;
+            flex: 1; /* 占用剩余空间 */
+            overflow-y: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            min-height: 300px; /* 最小高度 */
+        }
+        
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            flex-shrink: 0; /* 不允许收缩 */
+        }
+        
+        .log-header h3 {
+            color: #2c3e50;
+            border: none;
+            padding: 0;
+        }
+        
+        .log-controls {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .log-controls button {
+            padding: 6px 12px;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 5px;
+            font-size: 0.8rem;
+            cursor: pointer;
+        }
+        
+        .success { color: #00b894; }
+        .error { color: #e17055; }
+        .warning { color: #fdcb6e; }
+        .info { color: #74b9ff; }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .status-indicator.success {
+            background: #00b894;
+        }
+        
+        .status-indicator.error {
+            background: #e17055;
+        }
+        
+        .status-indicator.warning {
+            background: #fdcb6e;
+        }
+        
+        .status-indicator.info {
+            background: #74b9ff;
+        }
+        
+        .note {
+            background: #f8f9fa;
+            border-left: 4px solid #74b9ff;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 0 8px 8px 0;
+        }
+        
+        .note-title {
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 8px;
+        }
+        
+        .note-content {
+            color: #636e72;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+        
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+                height: calc(100vh - 120px); /* 移动端调整高度 */
+            }
+            
+            .test-panel {
+                border-right: none;
+                border-bottom: 1px solid #eee;
+                max-height: 60vh; /* 测试面板最大高度 */
+                overflow-y: auto;
+            }
+            
+            .log-panel {
+                min-height: 40vh; /* 日志面板最小高度 */
+            }
+            
+            .button-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            #log {
+                min-height: 250px; /* 移动端日志区域最小高度 */
+            }
+        }
     </style>
 </head>
 <body>
-    <h1>抖音下载功能测试</h1>
-    
-    <div class="test-section">
-        <h3>测试视频URL:</h3>
-        <p><code id="test-url">https://aweme.snssdk.com/aweme/v1/play/?video_id=v0d00fg10000d2aq08vog65v0b58usm0&ratio=1080p&line=0</code></p>
-        <p style="color: #666; font-size: 0.9em;">
-            <strong>注意：</strong>如果测试失败，可能是因为：<br>
-            1. 测试URL已过期（抖音链接有时效性）<br>
-            2. 需要使用新的抖音分享链接进行测试<br>
-            3. 可以尝试直接测试videoId功能
-        </p>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 抖音下载调试控制台</h1>
+            <p>测试和调试各种下载功能，监控API调用状态</p>
+        </div>
         
-        <button onclick="testGetRealUrl()">🔍 测试获取真实URL</button>
-        <button onclick="testZjcdnApi()">🚀 测试zjcdn直链API</button>
-        <button onclick="testDirectDownload()">⬇️ 测试直接下载</button>
-        <button onclick="testVideoId()">🎯 测试VideoID（绕过URL解析）</button>
-        <button onclick="clearLog()">🗑️ 清空日志</button>
-    </div>
-    
-    <div class="test-section">
-        <h3>测试日志:</h3>
-        <div id="log"></div>
+        <div class="main-content">
+            <div class="test-panel">
+                <div class="test-section">
+                    <h3>🔗 测试URL设置</h3>
+                    <input 
+                        type="text" 
+                        id="test-url" 
+                        class="url-input" 
+                        placeholder="输入抖音分享链接或测试URL..."
+                        value="https://v.douyin.com/iMBBgLAf/"
+                    >
+                    
+                    <div class="note">
+                        <div class="note-title">💡 测试提示</div>
+                        <div class="note-content">
+                            • 可以使用真实的抖音分享链接进行测试<br>
+                            • 如果链接过期，可以尝试VideoID测试功能<br>
+                            • 某些测试可能需要网络连接和有效的抖音链接
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="test-section">
+                    <h3>🧪 API功能测试</h3>
+                    <div class="button-grid">
+                        <button class="test-btn primary" onclick="testZjcdnApi()">
+                            🚀 zjcdn API
+                        </button>
+                        <button class="test-btn secondary" onclick="testGetRealUrl()">
+                            🔍 URL解析
+                        </button>
+                        <button class="test-btn success" onclick="testDirectDownload()">
+                            ⬇️ 智能下载
+                        </button>
+                        <button class="test-btn info" onclick="testVideoId()">
+                            🎯 VideoID测试
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="test-section">
+                    <h3>🛠 高级测试</h3>
+                    <div class="button-grid">
+                        <button class="test-btn secondary" onclick="testProxyDownload()">
+                            🌐 代理下载
+                        </button>
+                        <button class="test-btn info" onclick="testVideoProxy()">
+                            � 视频预览
+                        </button>
+                        <button class="test-btn success" onclick="testServerHealth()">
+                            ❤️ 服务器状态
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="test-section">
+                    <button class="test-btn clear-btn" onclick="clearLog()">
+                        🗑️ 清空日志
+                    </button>
+                </div>
+            </div>
+            
+            <div class="log-panel">
+                <div class="log-header">
+                    <h3>📋 实时日志</h3>
+                    <div class="log-controls">
+                        <button onclick="scrollToBottom()">置底</button>
+                        <button onclick="exportLog()">导出</button>
+                    </div>
+                </div>
+                <div id="log"></div>
+            </div>
+        </div>
     </div>
 
     <script>
-        const testUrl = document.getElementById('test-url').textContent;
         const log = document.getElementById('log');
+        let logCount = 0;
+        
+        function getTestUrl() {
+            return document.getElementById('test-url').value.trim();
+        }
         
         function addLog(message, type = 'info') {
             const time = new Date().toLocaleTimeString();
-            const className = type === 'success' ? 'success' : type === 'error' ? 'error' : type === 'warning' ? 'warning' : '';
-            log.innerHTML += `<div class="${className}">[${time}] ${message}</div>`;
-            log.scrollTop = log.scrollHeight;
+            const statusClass = type;
+            const statusIcon = type === 'success' ? '✅' : type === 'error' ? '❌' : type === 'warning' ? '⚠️' : 'ℹ️';
+            
+            logCount++;
+            log.innerHTML += `<div class="${statusClass}">
+                <span class="status-indicator ${statusClass}"></span>[${time}] ${statusIcon} ${message}
+            </div>`;
+            scrollToBottom();
         }
         
         function clearLog() {
             log.innerHTML = '';
+            logCount = 0;
+            addLog('📋 日志已清空，准备新的测试', 'info');
+        }
+        
+        function scrollToBottom() {
+            log.scrollTop = log.scrollHeight;
+        }
+        
+        function exportLog() {
+            const logContent = log.innerText;
+            const blob = new Blob([logContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `debug_log_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
         }
         
         async function testZjcdnApi() {
-            addLog('🚀 开始测试zjcdn直链API...');
+            const testUrl = getTestUrl();
+            if (!testUrl) {
+                addLog('请先输入测试URL', 'error');
+                return;
+            }
+            
+            addLog('🚀 开始测试 zjcdn API...', 'info');
+            addLog(`📎 测试URL: ${testUrl}`, 'info');
+            
             try {
                 const response = await fetch('/zjcdn', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url: 'https://v.douyin.com/test/' }) // 使用测试URL
+                    body: JSON.stringify({ url: testUrl })
                 });
                 
+                addLog(`📡 API响应状态: ${response.status}`, response.ok ? 'success' : 'error');
+                
                 if (!response.ok) {
-                    addLog('❌ zjcdn API请求失败: ' + response.status, 'error');
+                    addLog(`❌ HTTP错误: ${response.status} ${response.statusText}`, 'error');
                     return;
                 }
                 
                 const result = await response.json();
                 
                 if (result.code === 0) {
-                    addLog('✅ zjcdn API调用成功:', 'success');
-                    addLog(`   方法: ${result.data.method}`);
-                    addLog(`   视频链接数量: ${result.data.video.length}`);
-                    addLog(`   图片链接数量: ${result.data.img.length}`);
-                    addLog(`   是否图片分享: ${result.data.isImagesShare}`);
+                    addLog('✅ zjcdn API调用成功！', 'success');
+                    addLog(`📋 解析方法: ${result.data.method}`, 'info');
+                    addLog(`🎬 视频链接数量: ${result.data.video.length}`, 'success');
+                    addLog(`🖼️ 图片链接数量: ${result.data.img.length}`, 'info');
+                    addLog(`📷 是否图片分享: ${result.data.isImagesShare}`, 'info');
                     
                     if (result.data.video.length > 0) {
-                        addLog('📹 视频链接:');
+                        addLog('📹 视频链接详情:', 'info');
                         result.data.video.forEach((url, index) => {
                             const isZjcdn = url.includes('zjcdn.com');
-                            addLog(`   ${index + 1}. ${isZjcdn ? '[ZJCDN]' : '[OTHER]'} ${url.substring(0, 80)}...`);
+                            const urlPreview = url.length > 60 ? url.substring(0, 60) + '...' : url;
+                            addLog(`   ${index + 1}. ${isZjcdn ? '[ZJCDN直链]' : '[其他来源]'} ${urlPreview}`, isZjcdn ? 'success' : 'warning');
                         });
                     }
                     
+                    if (result.data.img.length > 0) {
+                        addLog(`🖼️ 发现${result.data.img.length}张图片`, 'info');
+                    }
+                    
                 } else {
-                    addLog('❌ zjcdn API返回错误: ' + result.msg, 'error');
+                    addLog(`❌ zjcdn API返回错误: ${result.msg}`, 'error');
                 }
                 
             } catch (error) {
-                addLog('❌ zjcdn API测试失败: ' + error.message, 'error');
+                addLog(`❌ zjcdn API测试失败: ${error.message}`, 'error');
             }
         }
         
         async function testGetRealUrl() {
-            addLog('🔍 开始测试获取真实URL...');
+            const testUrl = getTestUrl();
+            if (!testUrl) {
+                addLog('请先输入测试URL', 'error');
+                return;
+            }
+            
+            addLog('🔍 开始测试URL解析功能...', 'info');
+            
             try {
                 const response = await fetch(`/get-real-url?url=${encodeURIComponent(testUrl)}`);
                 const result = await response.json();
                 
                 if (result.success) {
-                    addLog('✅ 获取真实URL成功:', 'success');
-                    addLog(`   原始URL: ${result.originalUrl.substring(0, 80)}...`);
-                    addLog(`   真实URL: ${result.realUrl.substring(0, 80)}...`);
-                    addLog(`   内容类型: ${result.headers.contentType}`);
-                    addLog(`   文件大小: ${result.headers.contentLength} bytes`);
-                    addLog(`   是否重定向: ${result.redirected}`);
+                    addLog('✅ URL解析成功！', 'success');
+                    addLog(`🌐 原始URL: ${result.originalUrl.substring(0, 60)}...`, 'info');
+                    addLog(`🎯 真实URL: ${result.realUrl.substring(0, 60)}...`, 'success');
+                    
+                    // 显示URL类型
+                    if (result.urlType) {
+                        addLog(`🏷️ URL类型: ${result.urlType === 'douyin' ? '抖音链接' : '普通链接'}`, 'info');
+                    }
+                    
+                    addLog(`📋 内容类型: ${result.headers.contentType}`, 'info');
+                    addLog(`📏 文件大小: ${result.headers.contentLength}`, 'info');
+                    addLog(`🔄 是否重定向: ${result.redirected ? '是' : '否'}`, result.redirected ? 'info' : 'info');
+                    
+                    // 根据状态码给出不同的提示
+                    if (result.status === 200) {
+                        addLog(`📊 响应状态: ${result.status} (正常)`, 'success');
+                    } else if (result.status === 404) {
+                        addLog(`📊 响应状态: ${result.status} (页面不存在 - 抖音链接可能需要zjcdn API解析)`, 'warning');
+                    } else if (result.status >= 400) {
+                        addLog(`📊 响应状态: ${result.status} (客户端/服务器错误)`, 'warning');
+                    } else if (result.status >= 300) {
+                        addLog(`📊 响应状态: ${result.status} (重定向)`, 'info');
+                    } else {
+                        addLog(`📊 响应状态: ${result.status}`, 'info');
+                    }
+                    
+                    if (result.headers.server !== 'unknown') {
+                        addLog(`🖥️ 服务器: ${result.headers.server}`, 'info');
+                    }
+                    
                 } else {
-                    addLog('❌ 获取真实URL失败: ' + result.error, 'error');
+                    addLog(`❌ URL解析失败: ${result.error}`, 'error');
+                    if (result.originalUrl) {
+                        addLog(`🌐 尝试解析的URL: ${result.originalUrl}`, 'info');
+                    }
                 }
             } catch (error) {
-                addLog('❌ 请求失败: ' + error.message, 'error');
+                addLog(`❌ URL解析请求失败: ${error.message}`, 'error');
             }
         }
         
         async function testDirectDownload() {
-            addLog('⬇️ 开始测试直接下载...');
-            const filename = 'test_direct_video.mp4';
+            const testUrl = getTestUrl();
+            if (!testUrl) {
+                addLog('请先输入测试URL', 'error');
+                return;
+            }
+            
+            addLog('⬇️ 开始测试智能下载功能...', 'info');
+            const filename = `debug_test_${Date.now()}.mp4`;
             
             try {
-                // 测试直接下载URL
                 const directUrl = `/direct-download?${new URLSearchParams({
                     url: testUrl,
                     filename: filename
                 })}`;
                 
-                addLog('🔗 直接下载URL: ' + directUrl);
+                addLog(`🔗 下载URL: ${directUrl}`, 'info');
                 
-                // 创建下载链接
                 const link = document.createElement('a');
                 link.href = directUrl;
                 link.download = filename;
@@ -138,16 +542,17 @@
                 link.click();
                 document.body.removeChild(link);
                 
-                addLog('🚀 直接下载已触发', 'success');
+                addLog('🚀 智能下载已触发，请检查浏览器下载', 'success');
+                addLog(`📁 文件名: ${filename}`, 'info');
                 
             } catch (error) {
-                addLog('❌ 直接下载失败: ' + error.message, 'error');
+                addLog(`❌ 智能下载失败: ${error.message}`, 'error');
             }
         }
         
         async function testVideoId() {
-            addLog('🎯 开始测试VideoID功能（绕过URL解析）...');
-            const testVideoId = '7000000000000000000'; // 示例videoId
+            addLog('🎯 开始测试VideoID功能...', 'info');
+            const testVideoId = '7536474232273964314'; // 使用真实的测试videoId
             
             try {
                 const response = await fetch('/test-videoid', {
@@ -163,26 +568,293 @@
                 const result = await response.json();
                 
                 if (result.success) {
-                    addLog('✅ VideoID测试成功:', 'success');
-                    addLog(`   VideoId: ${result.videoId}`);
-                    addLog(`   标题: ${result.title}`);
-                    addLog(`   作者: ${result.author}`);
-                    addLog(`   媒体类型: ${result.mediaType}`);
-                    addLog(`   包含视频: ${result.hasVideo}`);
-                    addLog(`   包含图片: ${result.hasImages}`);
+                    addLog('✅ VideoID测试成功！', 'success');
+                    addLog(`🎯 VideoId: ${result.videoId}`, 'info');
+                    addLog(`📝 标题: ${result.title || '无标题'}`, 'info');
+                    addLog(`👤 作者: ${result.author || '未知'}`, 'info');
+                    addLog(`📱 媒体类型: ${result.mediaType}`, 'info');
+                    addLog(`🎬 包含视频: ${result.hasVideo ? '是' : '否'}`, result.hasVideo ? 'success' : 'warning');
+                    addLog(`🖼️ 包含图片: ${result.hasImages ? '是' : '否'}`, result.hasImages ? 'info' : 'info');
                 } else {
-                    addLog('❌ VideoID测试失败: ' + result.error, 'error');
+                    addLog(`❌ VideoID测试失败: ${result.error}`, 'error');
                 }
                 
             } catch (error) {
-                addLog('❌ VideoID测试出错: ' + error.message, 'error');
+                addLog(`❌ VideoID测试出错: ${error.message}`, 'error');
             }
         }
         
-        // 页面加载时显示欢迎信息
-        addLog('🎬 抖音下载功能测试页面已加载');
-        addLog('📝 点击上方按钮测试不同的下载方法');
-        addLog('💡 如果URL测试失败，可能是链接过期，尝试使用VideoID测试验证基本功能');
+        async function testProxyDownload() {
+            const testUrl = getTestUrl();
+            if (!testUrl) {
+                addLog('请先输入测试URL', 'error');
+                return;
+            }
+            
+            addLog('🌐 开始测试代理下载功能...', 'info');
+            
+            try {
+                // 首先获取zjcdn链接
+                const zjcdnResponse = await fetch('/zjcdn', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: testUrl })
+                });
+                
+                const zjcdnResult = await zjcdnResponse.json();
+                
+                if (zjcdnResult.code !== 0 || zjcdnResult.data.video.length === 0) {
+                    addLog('❌ 无法获取有效的视频链接', 'error');
+                    return;
+                }
+                
+                const videoUrl = zjcdnResult.data.video[0];
+                const filename = `proxy_test_${Date.now()}.mp4`;
+                
+                const proxyUrl = `/proxy-download?url=${encodeURIComponent(videoUrl)}&filename=${filename}`;
+                
+                addLog('🚀 开始代理下载...', 'info');
+                addLog(`🎯 视频源: ${videoUrl.substring(0, 60)}...`, 'info');
+                
+                const link = document.createElement('a');
+                link.href = proxyUrl;
+                link.download = filename;
+                link.style.display = 'none';
+                
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                addLog('✅ 代理下载已触发！', 'success');
+                addLog(`📁 文件名: ${filename}`, 'info');
+                
+            } catch (error) {
+                addLog(`❌ 代理下载测试失败: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testVideoProxy() {
+            const testUrl = getTestUrl();
+            if (!testUrl) {
+                addLog('请先输入测试URL', 'error');
+                return;
+            }
+            
+            addLog('🎬 开始测试视频预览代理...', 'info');
+            
+            try {
+                // 获取视频链接
+                const zjcdnResponse = await fetch('/zjcdn', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: testUrl })
+                });
+                
+                const zjcdnResult = await zjcdnResponse.json();
+                
+                if (zjcdnResult.code !== 0 || zjcdnResult.data.video.length === 0) {
+                    addLog('❌ 无法获取有效的视频链接', 'error');
+                    return;
+                }
+                
+                const videoUrl = zjcdnResult.data.video[0];
+                const proxyUrl = `/proxy-video?url=${encodeURIComponent(videoUrl)}`;
+                
+                addLog('🎯 测试视频预览代理...', 'info');
+                addLog(`📺 代理URL: ${proxyUrl}`, 'info');
+                
+                // 创建视频元素测试
+                const video = document.createElement('video');
+                video.src = proxyUrl;
+                video.controls = true;
+                video.style.cssText = `
+                    width: 100%;
+                    max-width: 500px;
+                    max-height: 400px;
+                    border-radius: 8px;
+                    background: #000;
+                `;
+                
+                video.addEventListener('loadstart', () => {
+                    addLog('🔄 视频开始加载...', 'info');
+                });
+                
+                video.addEventListener('canplay', () => {
+                    addLog('✅ 视频预览代理工作正常！', 'success');
+                    addLog('🎬 视频可以正常播放', 'success');
+                });
+                
+                video.addEventListener('error', (e) => {
+                    addLog(`❌ 视频预览失败: ${e.message}`, 'error');
+                });
+                
+                // 创建背景遮罩
+                const overlay = document.createElement('div');
+                overlay.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100vw;
+                    height: 100vh;
+                    background: rgba(0,0,0,0.5);
+                    z-index: 999;
+                `;
+                overlay.onclick = () => {
+                    overlay.remove();
+                    testContainer.remove();
+                    addLog('🧹 视频预览已关闭', 'info');
+                };
+                
+                // 创建固定位置的视频预览容器
+                const testContainer = document.createElement('div');
+                testContainer.id = 'video-preview-container';
+                testContainer.style.cssText = `
+                    position: fixed;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    background: white;
+                    border: 2px solid #74b9ff;
+                    border-radius: 12px;
+                    padding: 20px;
+                    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+                    z-index: 1000;
+                    max-width: 90vw;
+                    max-height: 80vh;
+                    overflow: auto;
+                `;
+                
+                const closeBtn = document.createElement('button');
+                closeBtn.innerHTML = '❌ 关闭预览';
+                closeBtn.style.cssText = `
+                    position: absolute;
+                    top: 10px;
+                    right: 10px;
+                    background: #e17055;
+                    color: white;
+                    border: none;
+                    padding: 8px 12px;
+                    border-radius: 5px;
+                    cursor: pointer;
+                    font-size: 12px;
+                `;
+                closeBtn.onclick = () => {
+                    overlay.remove();
+                    testContainer.remove();
+                    addLog('🧹 视频预览已关闭', 'info');
+                };
+                
+                const title = document.createElement('h3');
+                title.innerHTML = '🎬 视频预览测试';
+                title.style.cssText = 'margin-top: 30px; margin-bottom: 15px; color: #2c3e50;';
+                
+                testContainer.appendChild(closeBtn);
+                testContainer.appendChild(title);
+                testContainer.appendChild(video);
+                
+                document.body.appendChild(overlay);
+                document.body.appendChild(testContainer);
+                
+                // 15秒后自动移除测试视频
+                setTimeout(() => {
+                    if (testContainer.parentNode) {
+                        overlay.remove();
+                        testContainer.remove();
+                        addLog('🧹 测试视频已自动清理', 'info');
+                    }
+                }, 15000);
+                
+            } catch (error) {
+                addLog(`❌ 视频预览代理测试失败: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testServerHealth() {
+            addLog('❤️ 开始服务器健康检查...', 'info');
+            
+            const healthTests = [
+                { name: '主页访问', url: '/', method: 'GET' },
+                { name: 'zjcdn接口', url: '/zjcdn', method: 'POST', body: { url: 'https://v.douyin.com/test/' } },
+                { name: '测试端点检查', url: '/get-real-url?url=' + encodeURIComponent('https://httpbin.org/status/200'), method: 'GET' }
+            ];
+            
+            addLog('🔍 执行基础接口检查...', 'info');
+            
+            for (const test of healthTests) {
+                try {
+                    const options = {
+                        method: test.method,
+                        headers: test.body ? { 'Content-Type': 'application/json' } : {}
+                    };
+                    
+                    if (test.body) {
+                        options.body = JSON.stringify(test.body);
+                    }
+                    
+                    const startTime = Date.now();
+                    const response = await fetch(test.url, options);
+                    const responseTime = Date.now() - startTime;
+                    
+                    if (response.ok) {
+                        addLog(`✅ ${test.name}: HTTP ${response.status} (${responseTime}ms)`, 'success');
+                    } else {
+                        addLog(`⚠️ ${test.name}: HTTP ${response.status} (${responseTime}ms)`, 'warning');
+                    }
+                    
+                } catch (error) {
+                    addLog(`❌ ${test.name}: ${error.message}`, 'error');
+                }
+            }
+            
+            // 单独测试代理功能（仅检查接口响应，不实际下载）
+            addLog('🌐 检查代理接口状态...', 'info');
+            
+            try {
+                // 测试代理下载接口是否响应（使用HEAD方法避免实际下载）
+                const proxyResponse = await fetch('/proxy-download?url=' + encodeURIComponent('https://httpbin.org/status/204'), {
+                    method: 'HEAD'
+                });
+                
+                if (proxyResponse.status === 405) {
+                    // HEAD方法不支持是正常的，说明接口存在
+                    addLog('✅ 代理下载接口: 接口可用 (HEAD方法限制是正常的)', 'success');
+                } else if (proxyResponse.ok) {
+                    addLog('✅ 代理下载接口: 响应正常', 'success');
+                } else {
+                    addLog(`⚠️ 代理下载接口: HTTP ${proxyResponse.status}`, 'warning');
+                }
+                
+            } catch (error) {
+                addLog(`❌ 代理下载接口: ${error.message}`, 'error');
+            }
+            
+            try {
+                // 测试视频代理接口
+                const videoProxyResponse = await fetch('/proxy-video?url=' + encodeURIComponent('https://httpbin.org/status/204'), {
+                    method: 'HEAD'
+                });
+                
+                if (videoProxyResponse.status === 405) {
+                    addLog('✅ 视频代理接口: 接口可用 (HEAD方法限制是正常的)', 'success');
+                } else if (videoProxyResponse.ok) {
+                    addLog('✅ 视频代理接口: 响应正常', 'success');
+                } else {
+                    addLog(`⚠️ 视频代理接口: HTTP ${videoProxyResponse.status}`, 'warning');
+                }
+                
+            } catch (error) {
+                addLog(`❌ 视频代理接口: ${error.message}`, 'error');
+            }
+            
+            addLog('❤️ 服务器健康检查完成！', 'success');
+        }
+        
+        // 页面加载时的初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            addLog('🚀 抖音下载调试控制台已加载', 'success');
+            addLog('💡 请输入测试URL并选择相应的测试功能', 'info');
+            addLog('🔧 建议先进行服务器健康检查', 'info');
+        });
     </script>
 </body>
 </html>
