@@ -518,12 +518,29 @@ function copySingleLink(url) {
 
 
 
-// 直接下载函数 - 仅使用直接下载
+// 直接下载函数 - 支持多重回退机制
 function downloadMedia(url, index) {
   try {
-    // 尝试获取文件扩展名
-    const urlParts = url.split('.');
-    const extension = urlParts.length > 1 ? '.' + urlParts[urlParts.length - 1].split('?')[0] : '';
+    // 尝试获取文件扩展名，改进扩展名检测
+    let extension = '';
+    
+    // 方法1: 从URL参数中检测
+    if (url.includes('.mp4')) {
+      extension = '.mp4';
+    } else if (url.includes('.jpg') || url.includes('.jpeg')) {
+      extension = '.jpg';
+    } else if (url.includes('.png')) {
+      extension = '.png';
+    } else {
+      // 方法2: 从URL路径中提取
+      const urlMatch = url.match(/\.([a-zA-Z0-9]{2,4})(\?|$)/);
+      if (urlMatch) {
+        extension = '.' + urlMatch[1];
+      } else {
+        // 默认扩展名
+        extension = '.mp4';
+      }
+    }
 
     // 生成时间戳
     const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
@@ -538,10 +555,25 @@ function downloadMedia(url, index) {
     showToast('📥 开始下载...', 'info');
 
     // 使用 fetch 下载文件
-    fetch(url)
+    fetch(url, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://www.douyin.com/',
+        'Accept': '*/*'
+      },
+      credentials: 'omit'
+    })
       .then(response => {
         if (!response.ok) {
-          throw new Error('网络响应错误');
+          // 检查具体的HTTP错误状态
+          if (response.status === 403) {
+            throw new Error('访问被拒绝 (403 Forbidden)');
+          } else if (response.status === 404) {
+            throw new Error('文件不存在 (404 Not Found)');
+          } else {
+            throw new Error(`网络响应错误: ${response.status} ${response.statusText}`);
+          }
         }
         return response.blob();
       })
@@ -564,7 +596,7 @@ function downloadMedia(url, index) {
       })
       .catch(error => {
         console.error('直接下载失败:', error);
-        showToast('⚠️ 直接下载失败，尝试服务器代理下载...', 'warning');
+        showToast(`⚠️ 直接下载失败: ${error.message}，尝试服务器代理下载...`, 'warning');
         
         // 如果下载失败，则回退到服务器代理下载
         proxyDownload(url, fileName);

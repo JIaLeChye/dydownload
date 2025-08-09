@@ -416,30 +416,64 @@ app.get('/proxy-download', async (req, res) => {
             method: 'GET',
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Referer': 'https://www.douyin.com/'
+                'Referer': 'https://www.douyin.com/',
+                'Accept': '*/*',
+                'Accept-Encoding': 'identity',
+                'Connection': 'keep-alive'
             },
             timeout: 60000
         });
         
         if (!response.ok) {
-            console.log('❌ 文件获取失败:', response.status);
-            return res.status(response.status).json({ error: '文件获取失败' });
+            console.log('❌ 文件获取失败:', response.status, response.statusText);
+            return res.status(response.status).json({ error: `文件获取失败: ${response.status} ${response.statusText}` });
         }
         
         // 获取文件信息
         const contentType = response.headers.get('content-type') || 'application/octet-stream';
         const contentLength = response.headers.get('content-length');
         
+        // 处理文件名，确保有正确的扩展名
+        let finalFilename = filename || 'douyin_video';
+        
+        // 根据内容类型确定扩展名
+        if (!finalFilename.includes('.')) {
+            if (contentType.includes('video/mp4') || contentType.includes('video/mpeg') || url.includes('.mp4')) {
+                finalFilename += '.mp4';
+            } else if (contentType.includes('image/jpeg') || url.includes('.jpg') || url.includes('.jpeg')) {
+                finalFilename += '.jpg';
+            } else if (contentType.includes('image/png') || url.includes('.png')) {
+                finalFilename += '.png';
+            } else if (contentType.includes('video/')) {
+                finalFilename += '.mp4'; // 默认视频格式
+            } else if (contentType.includes('image/')) {
+                finalFilename += '.jpg'; // 默认图片格式
+            } else {
+                // 尝试从URL中提取扩展名
+                const urlMatch = url.match(/\.([a-zA-Z0-9]{2,4})(\?|$)/);
+                if (urlMatch) {
+                    finalFilename += '.' + urlMatch[1];
+                } else {
+                    finalFilename += '.mp4'; // 最终默认
+                }
+            }
+        }
+        
+        console.log('📁 最终文件名:', finalFilename);
+        console.log('📋 内容类型:', contentType);
+        
         // 设置文件下载头
-        const finalFilename = filename || 'douyin_video.mp4';
         res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(finalFilename)}"`);
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Pragma', 'no-cache');
         
         if (contentLength) {
             res.setHeader('Content-Length', contentLength);
+            console.log('📏 文件大小:', Math.round(contentLength / 1024 / 1024 * 100) / 100 + ' MB');
         }
         
-        console.log('✅ 开始下载:', finalFilename);
+        console.log('✅ 开始代理下载:', finalFilename);
         
         // 直接将文件流传给用户
         response.body.pipe(res);
