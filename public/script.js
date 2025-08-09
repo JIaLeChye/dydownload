@@ -26,6 +26,46 @@ themeToggle.addEventListener('click', function() {
   }
 });
 
+// 自动调整 textarea 高度
+function autoResize(textarea) {
+  // 重置高度以获取正确的 scrollHeight
+  textarea.style.height = 'auto';
+  
+  // 计算最小高度（约3行）和最大高度（约10行）
+  const minHeight = 96; // 6rem = 96px (约3行)
+  const maxHeight = 240; // 15rem = 240px (约10行)
+  
+  // 获取内容需要的高度
+  const scrollHeight = textarea.scrollHeight;
+  
+  // 设置高度，在最小值和最大值之间
+  const newHeight = Math.max(minHeight, Math.min(scrollHeight, maxHeight));
+  textarea.style.height = newHeight + 'px';
+}
+
+// 初始化 textarea 自动调整功能
+document.addEventListener('DOMContentLoaded', function() {
+  const videoUrlTextarea = document.getElementById('videoUrl');
+  
+  if (videoUrlTextarea) {
+    // 监听输入事件
+    videoUrlTextarea.addEventListener('input', function() {
+      autoResize(this);
+    });
+    
+    // 监听粘贴事件
+    videoUrlTextarea.addEventListener('paste', function() {
+      // 粘贴后稍微延迟调整高度，确保内容已经粘贴完成
+      setTimeout(() => {
+        autoResize(this);
+      }, 10);
+    });
+    
+    // 初始调整高度
+    autoResize(videoUrlTextarea);
+  }
+});
+
 document.addEventListener("DOMContentLoaded", function () {
   // 添加测试模式 - 直接显示原始链接区域进行测试
   const testMode = false; // 设置为 true 来启用测试模式
@@ -523,21 +563,55 @@ function downloadMedia(url, index) {
         showToast('✅ 下载完成', 'success');
       })
       .catch(error => {
-        console.error('Download error:', error);
-        showToast('❌ 下载失败，尝试直接打开链接', 'error');
+        console.error('直接下载失败:', error);
+        showToast('⚠️ 直接下载失败，尝试服务器代理下载...', 'warning');
         
-        // 如果下载失败，则回退到直接打开链接
-        fallbackDownload(url, fileName);
+        // 如果下载失败，则回退到服务器代理下载
+        proxyDownload(url, fileName);
       });
     
   } catch (error) {
-    console.error('Download error:', error);
-    showToast('❌ 下载失败', 'error');
+    console.error('下载初始化失败:', error);
+    showToast('❌ 下载失败，尝试服务器代理下载...', 'warning');
+    
+    // 如果连初始化都失败，直接使用代理下载
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
+    const fileName = `douyin_media_${timestamp}_${index + 1}.mp4`;
+    proxyDownload(url, fileName);
   }
 }
 
-function fallbackDownload(url, fileName) {
-  // 回退方案：直接创建下载链接
+function proxyDownload(url, fileName) {
+  try {
+    // 使用服务器代理下载
+    console.log('使用服务器代理下载:', fileName);
+    
+    // 构建代理下载URL
+    const proxyUrl = `/proxy-download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(fileName)}`;
+    
+    // 创建下载链接
+    const link = document.createElement('a');
+    link.href = proxyUrl;
+    link.download = fileName;
+    link.style.display = 'none';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    showToast('🔄 使用服务器代理下载', 'info');
+    
+  } catch (error) {
+    console.error('代理下载也失败:', error);
+    showToast('❌ 代理下载失败，尝试直接打开链接', 'error');
+    
+    // 最后的回退方案：直接打开链接
+    finalFallbackDownload(url, fileName);
+  }
+}
+
+function finalFallbackDownload(url, fileName) {
+  // 最终回退方案：直接创建下载链接
   const link = document.createElement('a');
   link.href = url;
   link.download = fileName;
