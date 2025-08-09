@@ -40,6 +40,7 @@
 - **🌓 主题切换**: 明暗模式无缝切换
 - **📋 链接管理**: 可视化链接列表，类型标识
 
+
 ## ⚠️ 免责声明
 
 > 使用本项目所产生的所有风险由用户自行承担。我们不对因使用本项目而导致的任何直接、间接、偶然、特殊或后果性的损害负责，包括但不限于利润损失、数据丢失或其他经济损失。
@@ -76,6 +77,7 @@
 # 克隆你 Fork 的项目（替换 YOUR_USERNAME 为你的用户名）
 git clone https://github.com/YOUR_USERNAME/dydownload.git
 cd dydownload
+
 
 # 安装依赖
 npm install
