@@ -285,7 +285,7 @@ function generateLinksListWithTypes(urlsWithType) {
         <button class="btn btn-sm btn-outline-primary" onclick="copySingleLink('${url}')" title="复制链接">
           📋 复制链接
         </button>
-        <button class="btn btn-sm btn-outline-success" onclick="directDownloadFromUrl('${url}', ${index})" title="直接下载">
+        <button class="btn btn-sm btn-outline-success" onclick="downloadMedia('${url}', ${index})" title="直接下载">
           ⬇️ 直接下载
         </button>
       </div>
@@ -332,7 +332,7 @@ function generateLinksList(urls) {
         <button class="btn btn-sm btn-outline-primary" onclick="copySingleLink('${url}')" title="复制链接">
           � 复制链接
         </button>
-        <button class="btn btn-sm btn-outline-success" onclick="directDownloadFromUrl('${url}', ${index})" title="直接下载">
+        <button class="btn btn-sm btn-outline-success" onclick="downloadMedia('${url}', ${index})" title="直接下载">
           ⬇️ 直接下载
         </button>
       </div>
@@ -479,40 +479,74 @@ function copySingleLink(url) {
 
 
 // 直接下载函数 - 仅使用直接下载
-function directDownloadFromUrl(url, index) {
+function downloadMedia(url, index) {
   try {
-    // 生成时间戳和文件名
+    // 尝试获取文件扩展名
+    const urlParts = url.split('.');
+    const extension = urlParts.length > 1 ? '.' + urlParts[urlParts.length - 1].split('?')[0] : '';
+
+    // 生成时间戳
     const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
+
+    // 确定文件类型
     const mediaItem = document.querySelector(`[data-index="${index}"]`);
     const isImage = mediaItem && mediaItem.querySelector('img');
     const filePrefix = isImage ? 'douyin_image' : 'douyin_video';
-    const fileName = `${filePrefix}_${timestamp}_${index + 1}${isImage ? '.jpg' : '.mp4'}`;
+    const fileName = `${filePrefix}_${timestamp}_${index + 1}${extension}`;
+
+    // 显示下载开始的提示
+    showToast('📥 开始下载...', 'info');
+
+    // 使用 fetch 下载文件
+    fetch(url)
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('网络响应错误');
+        }
+        return response.blob();
+      })
+      .then(blob => {
+        // 创建下载链接
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = fileName;
+        link.style.display = 'none';
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // 清理内存
+        window.URL.revokeObjectURL(downloadUrl);
+        
+        showToast('✅ 下载完成', 'success');
+      })
+      .catch(error => {
+        console.error('Download error:', error);
+        showToast('❌ 下载失败，尝试直接打开链接', 'error');
+        
+        // 如果下载失败，则回退到直接打开链接
+        fallbackDownload(url, fileName);
+      });
     
-    console.log('⬇️ 服务器代理下载:', fileName);
-    showToast('⬇️ 开始下载...', 'info');
-    
-    // 通过服务器代理下载，不是直接跳转链接
-    const proxyUrl = `/proxy-download?${new URLSearchParams({
-      url: url,
-      filename: fileName
-    })}`;
-    
-    // 创建下载链接，指向服务器代理端点
-    const link = document.createElement('a');
-    link.href = proxyUrl;
-    link.download = fileName;
-    link.style.display = 'none';
-    
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    showToast('✅ 下载已启动', 'success');
-      
   } catch (error) {
-    console.error('下载错误:', error);
-    showToast('❌ 下载失败: ' + error.message, 'error');
+    console.error('Download error:', error);
+    showToast('❌ 下载失败', 'error');
   }
+}
+
+function fallbackDownload(url, fileName) {
+  // 回退方案：直接创建下载链接
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.target = '_blank';
+  link.style.display = 'none';
+  
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 // 获取真实URL函数
@@ -867,13 +901,6 @@ function toggleView(viewMode) {
       });
   }
 }
-
-function downloadMedia(url, index) {
-  // 将 downloadMedia 重定向到 directDownloadFromUrl
-  directDownloadFromUrl(url, index);
-}
-
-
 
 // 下载进度状态
 let downloadProgress = {

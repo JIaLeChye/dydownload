@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>测试代理下载</title>
+</head>
+<body>
+    <h1>测试代理下载功能</h1>
+    <button id="testBtn">测试代理下载</button>
+    <div id="result"></div>
+    
+    <script>
+        document.getElementById('testBtn').addEventListener('click', async function() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '测试开始...';
+            
+            const testVideoUrl = 'https://aweme.snssdk.com/aweme/v1/play/?video_id=v1e00fgi0000d2b9nnvog65mdajdqhc0&ratio=1080p&line=0';
+            const fileName = 'test_video.mp4';
+            
+            try {
+                // 测试代理URL
+                const proxyUrl = `/proxy-download?${new URLSearchParams({
+                    url: testVideoUrl,
+                    filename: fileName
+                })}`;
+                
+                resultDiv.innerHTML += '<br>代理URL: ' + proxyUrl;
+                
+                // 测试代理是否可用
+                const response = await fetch(proxyUrl, { method: 'HEAD' });
+                resultDiv.innerHTML += '<br>代理测试状态: ' + response.status;
+                resultDiv.innerHTML += '<br>内容类型: ' + response.headers.get('Content-Type');
+                resultDiv.innerHTML += '<br>内容长度: ' + response.headers.get('Content-Length');
+                
+                if (response.ok) {
+                    resultDiv.innerHTML += '<br>✅ 代理下载可用，开始下载...';
+                    
+                    // 创建下载链接
+                    const link = document.createElement('a');
+                    link.href = proxyUrl;
+                    link.download = fileName;
+                    link.style.display = 'none';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    
+                    resultDiv.innerHTML += '<br>✅ 下载已开始！';
+                } else {
+                    resultDiv.innerHTML += '<br>❌ 代理不可用: ' + response.status;
+                }
+            } catch (error) {
+                resultDiv.innerHTML += '<br>❌ 错误: ' + error.message;
+            }
+        });
+    </script>
+</body>
+</html>
