@@ -325,8 +325,8 @@ function generateLinksListWithTypes(urlsWithType) {
         <button class="btn btn-sm btn-outline-primary" onclick="copySingleLink('${url}')" title="复制链接">
           📋 复制链接
         </button>
-        <button class="btn btn-sm btn-outline-success" onclick="downloadMedia('${url}', ${index})" title="直接下载">
-          ⬇️ 直接下载
+        <button class="btn btn-sm btn-outline-success" onclick="downloadMedia('${url}', ${index})" title="智能下载（视频自动使用代理）">
+          ⬇️ 智能下载
         </button>
       </div>
     `;
@@ -370,10 +370,10 @@ function generateLinksList(urls) {
       </a>
       <div class="link-actions">
         <button class="btn btn-sm btn-outline-primary" onclick="copySingleLink('${url}')" title="复制链接">
-          � 复制链接
+          📋 复制链接
         </button>
-        <button class="btn btn-sm btn-outline-success" onclick="downloadMedia('${url}', ${index})" title="直接下载">
-          ⬇️ 直接下载
+        <button class="btn btn-sm btn-outline-success" onclick="downloadMedia('${url}', ${index})" title="智能下载（视频自动使用代理）">
+          ⬇️ 智能下载
         </button>
       </div>
     `;
@@ -518,12 +518,29 @@ function copySingleLink(url) {
 
 
 
-// 直接下载函数 - 仅使用直接下载
+// 直接下载函数 - 视频文件强制使用代理下载
 function downloadMedia(url, index) {
   try {
-    // 尝试获取文件扩展名
-    const urlParts = url.split('.');
-    const extension = urlParts.length > 1 ? '.' + urlParts[urlParts.length - 1].split('?')[0] : '';
+    // 尝试获取文件扩展名，改进扩展名检测
+    let extension = '';
+    
+    // 方法1: 从URL参数中检测
+    if (url.includes('.mp4')) {
+      extension = '.mp4';
+    } else if (url.includes('.jpg') || url.includes('.jpeg')) {
+      extension = '.jpg';
+    } else if (url.includes('.png')) {
+      extension = '.png';
+    } else {
+      // 方法2: 从URL路径中提取
+      const urlMatch = url.match(/\.([a-zA-Z0-9]{2,4})(\?|$)/);
+      if (urlMatch) {
+        extension = '.' + urlMatch[1];
+      } else {
+        // 默认扩展名
+        extension = '.mp4';
+      }
+    }
 
     // 生成时间戳
     const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
@@ -534,14 +551,46 @@ function downloadMedia(url, index) {
     const filePrefix = isImage ? 'douyin_image' : 'douyin_video';
     const fileName = `${filePrefix}_${timestamp}_${index + 1}${extension}`;
 
-    // 显示下载开始的提示
-    showToast('📥 开始下载...', 'info');
+    // 检查是否为视频文件（包括 zjcdn 域名和 mp4 扩展名）
+    const isVideoFile = !isImage && (
+      url.includes('.mp4') || 
+      url.includes('zjcdn.com') || 
+      url.includes('video') ||
+      extension === '.mp4'
+    );
+
+    // 视频文件直接使用代理下载，避免 403 错误
+    if (isVideoFile) {
+      console.log('检测到视频文件，直接使用代理下载:', fileName);
+      showToast('🔄 视频文件使用服务器代理下载', 'info');
+      proxyDownload(url, fileName);
+      return;
+    }
+
+    // 图片文件尝试直接下载
+    console.log('检测到图片文件，尝试直接下载:', fileName);
+    showToast('📥 开始下载图片...', 'info');
 
     // 使用 fetch 下载文件
-    fetch(url)
+    fetch(url, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://www.douyin.com/',
+        'Accept': '*/*'
+      },
+      credentials: 'omit'
+    })
       .then(response => {
         if (!response.ok) {
-          throw new Error('网络响应错误');
+          // 检查具体的HTTP错误状态
+          if (response.status === 403) {
+            throw new Error('访问被拒绝 (403 Forbidden)');
+          } else if (response.status === 404) {
+            throw new Error('文件不存在 (404 Not Found)');
+          } else {
+            throw new Error(`网络响应错误: ${response.status} ${response.statusText}`);
+          }
         }
         return response.blob();
       })
@@ -564,7 +613,7 @@ function downloadMedia(url, index) {
       })
       .catch(error => {
         console.error('直接下载失败:', error);
-        showToast('⚠️ 直接下载失败，尝试服务器代理下载...', 'warning');
+        showToast(`⚠️ 直接下载失败: ${error.message}，尝试服务器代理下载...`, 'warning');
         
         // 如果下载失败，则回退到服务器代理下载
         proxyDownload(url, fileName);
@@ -885,8 +934,10 @@ function displayMediaItems(mediaItems) {
                         <button onclick="retryLoadMedia('${item.url}', ${index})" class="btn btn-sm btn-outline-primary mt-2">重试</button>
                       </div>`;
     } else {
+      // 使用代理URL来避免403错误
+      const proxyVideoUrl = `/proxy-video?url=${encodeURIComponent(item.url)}`;
       mediaContent = `<video controls preload="metadata" onclick="handleMediaClick(${index}, '${item.type}')" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-                       <source src="${item.url}" type="video/mp4">
+                       <source src="${proxyVideoUrl}" type="video/mp4">
                        您的浏览器不支持视频播放。
                      </video>
                      <div style="display:none; padding: 2rem; text-align: center; background: var(--card-bg); border-radius: 8px;">
@@ -903,7 +954,7 @@ function displayMediaItems(mediaItems) {
     return `
       <div class="media-item" data-index="${index}" data-type="${item.type}" data-url="${item.url}" onclick="handleMediaItemClick(event, ${index}, '${item.type}')">
         <div class="media-type">${item.type === 'image' ? '📸 图片' : '🎬 视频'} ${index + 1}</div>
-        <button class="media-download-btn" onclick="event.stopPropagation(); downloadMedia('${item.url}', ${index})" title="下载">
+        <button class="media-download-btn" onclick="event.stopPropagation(); downloadMedia('${item.url}', ${index})" title="智能下载（视频自动使用代理）">
           ⬇️
         </button>
         <div class="media-content">
@@ -914,8 +965,8 @@ function displayMediaItems(mediaItems) {
           <button class="btn btn-sm btn-outline-primary me-2" onclick="event.stopPropagation(); copySingleLink('${item.url}')" title="复制链接">
             🔗 复制链接
           </button>
-          <button class="btn btn-sm btn-outline-success" onclick="event.stopPropagation(); downloadMedia('${item.url}', ${index})" title="下载文件">
-            ⬇️ 下载
+          <button class="btn btn-sm btn-outline-success" onclick="event.stopPropagation(); downloadMedia('${item.url}', ${index})" title="智能下载（视频自动使用代理）">
+            ⬇️ 智能下载
           </button>
         </div>
       </div>
@@ -942,8 +993,10 @@ function retryLoadMedia(url, index) {
                                     <div>图片加载失败</div>
                                   </div>`;
       } else {
+        // 使用代理URL来避免403错误
+        const proxyVideoUrl = `/proxy-video?url=${encodeURIComponent(item.url)}`;
         mediaContent.innerHTML = `<video controls preload="metadata" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-                                   <source src="${item.url}" type="video/mp4">
+                                   <source src="${proxyVideoUrl}" type="video/mp4">
                                    您的浏览器不支持视频播放。
                                  </video>
                                  <div style="display:none; padding: 2rem; text-align: center; background: var(--card-bg); border-radius: 8px;">

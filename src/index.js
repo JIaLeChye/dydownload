@@ -277,44 +277,7 @@ app.post('/douyin', async (req, res) => {
             videoUrls = [stable || videoUrls[0]];
         }
 
-        // 如果视频URL为空或失败，使用SuperDownloader（仅对视频）
-        if (!isImagesShare && (!videoUrls || videoUrls.length === 0)) {
-            console.log('🚨 常规方法失败，启动SuperDownloader...');
-            
-            // 获取原始视频URL
-            const originalVideoUrl = douyinData?.video?.play_addr?.url_list?.[0] || 
-                                   douyinData?.video?.download_addr?.url_list?.[0];
-            
-            if (originalVideoUrl) {
-                const SuperDownloader = require('../super-downloader');
-                const superDownloader = new SuperDownloader();
-                
-                const result = await superDownloader.getWorkingVideoUrl(originalVideoUrl, douyinId);
-                
-                if (result.success) {
-                    console.log('✅ SuperDownloader成功!');
-                    videoUrls = [{
-                        url: result.downloadUrl,
-                        headers: {
-                            'User-Agent': result.userAgent,
-                            'Referer': result.referer
-                        },
-                        method: 'super-downloader',
-                        contentType: result.contentType,
-                        contentLength: result.contentLength,
-                        duration: result.duration
-                    }];
-                } else {
-                    console.log('❌ SuperDownloader也失败了:', result.error);
-                    // 返回错误信息但不中断程序
-                    videoUrls = [{
-                        error: result.error,
-                        method: 'super-downloader-failed',
-                        totalAttempts: result.totalAttempts
-                    }];
-                }
-            }
-        }
+        // 不再使用SuperDownloader - 已移除
 
     res.send({ code: 0, data: { video: videoUrls, img: imgUrls, debugMode, isImagesShare } })
     } catch (e) {
@@ -416,37 +379,147 @@ app.get('/proxy-download', async (req, res) => {
             method: 'GET',
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Referer': 'https://www.douyin.com/'
+                'Referer': 'https://www.douyin.com/',
+                'Accept': '*/*',
+                'Accept-Encoding': 'identity',
+                'Connection': 'keep-alive'
             },
             timeout: 60000
         });
         
         if (!response.ok) {
-            console.log('❌ 文件获取失败:', response.status);
-            return res.status(response.status).json({ error: '文件获取失败' });
+            console.log('❌ 文件获取失败:', response.status, response.statusText);
+            return res.status(response.status).json({ error: `文件获取失败: ${response.status} ${response.statusText}` });
         }
         
         // 获取文件信息
         const contentType = response.headers.get('content-type') || 'application/octet-stream';
         const contentLength = response.headers.get('content-length');
         
+        // 处理文件名，确保有正确的扩展名
+        let finalFilename = filename || 'douyin_video';
+        
+        // 根据内容类型确定扩展名
+        if (!finalFilename.includes('.')) {
+            if (contentType.includes('video/mp4') || contentType.includes('video/mpeg') || url.includes('.mp4')) {
+                finalFilename += '.mp4';
+            } else if (contentType.includes('image/jpeg') || url.includes('.jpg') || url.includes('.jpeg')) {
+                finalFilename += '.jpg';
+            } else if (contentType.includes('image/png') || url.includes('.png')) {
+                finalFilename += '.png';
+            } else if (contentType.includes('video/')) {
+                finalFilename += '.mp4'; // 默认视频格式
+            } else if (contentType.includes('image/')) {
+                finalFilename += '.jpg'; // 默认图片格式
+            } else {
+                // 尝试从URL中提取扩展名
+                const urlMatch = url.match(/\.([a-zA-Z0-9]{2,4})(\?|$)/);
+                if (urlMatch) {
+                    finalFilename += '.' + urlMatch[1];
+                } else {
+                    finalFilename += '.mp4'; // 最终默认
+                }
+            }
+        }
+        
+        console.log('📁 最终文件名:', finalFilename);
+        console.log('📋 内容类型:', contentType);
+        
         // 设置文件下载头
-        const finalFilename = filename || 'douyin_video.mp4';
         res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(finalFilename)}"`);
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Pragma', 'no-cache');
+        
+        if (contentLength) {
+            res.setHeader('Content-Length', contentLength);
+            console.log('📏 文件大小:', Math.round(contentLength / 1024 / 1024 * 100) / 100 + ' MB');
+        }
+        
+        console.log('✅ 开始代理下载:', finalFilename);
+        
+        // 修复: 使用 arrayBuffer 处理二进制内容
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        
+        res.write(buffer);
+        res.end();
+        
+        console.log('✅ 代理下载已完成:', finalFilename);
+        
+    } catch (error) {
+        console.error('❌ 代理下载错误:', error.message);
+        if (!res.headersSent) {
+            res.status(500).json({ error: '下载失败: ' + error.message });
+        }
+    }
+});
+
+// 视频代理端点 - 用于预览，不强制下载
+app.get('/proxy-video', async (req, res) => {
+    const { url } = req.query;
+    
+    if (!url) {
+        return res.status(400).json({ error: '缺少URL参数' });
+    }
+    
+    try {
+        console.log('🎬 视频代理预览:', url.substring(0, 100) + '...');
+        
+        const fetch = require('node-fetch');
+        
+        // 直接获取文件内容
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': 'https://www.douyin.com/',
+                'Accept': '*/*',
+                'Accept-Encoding': 'identity',
+                'Connection': 'keep-alive'
+            },
+            timeout: 60000
+        });
+        
+        if (!response.ok) {
+            console.log('❌ 视频获取失败:', response.status, response.statusText);
+            return res.status(response.status).json({ error: `视频获取失败: ${response.status} ${response.statusText}` });
+        }
+        
+        // 获取文件信息
+        const contentType = response.headers.get('content-type') || 'video/mp4';
+        const contentLength = response.headers.get('content-length');
+        
+        console.log('📋 视频内容类型:', contentType);
+        if (contentLength) {
+            console.log('📏 视频大小:', Math.round(contentLength / 1024 / 1024 * 100) / 100 + ' MB');
+        }
+        
+        // 设置视频流响应头（用于预览，不是下载）
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Accept-Ranges', 'bytes');
+        res.setHeader('Cache-Control', 'public, max-age=3600');
         
         if (contentLength) {
             res.setHeader('Content-Length', contentLength);
         }
         
-        console.log('✅ 开始下载:', finalFilename);
+        console.log('✅ 开始视频流传输');
         
-        // 直接将文件流传给用户
-        response.body.pipe(res);
+        // 修复: 使用 arrayBuffer 处理视频流
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        
+        res.write(buffer);
+        res.end();
+        
+        console.log('✅ 视频流传输完成');
         
     } catch (error) {
-        console.error('❌ 代理下载错误:', error.message);
-        res.status(500).json({ error: '下载失败: ' + error.message });
+        console.error('❌ 视频代理错误:', error.message);
+        if (!res.headersSent) {
+            res.status(500).json({ error: '视频加载失败: ' + error.message });
+        }
     }
 });
 
@@ -462,6 +535,108 @@ const getArgsPort = () => {
     }
 }
 
+
+// Debug端点: 获取真实URL信息
+app.get('/get-real-url', async (req, res) => {
+    const url = req.query.url;
+    
+    if (!url) {
+        return res.json({ success: false, error: '缺少URL参数' });
+    }
+    
+    try {
+        console.log('🔍 Debug: 获取真实URL信息 -', url);
+        
+        // 检查是否是抖音链接，如果是则使用特殊处理
+        const isDouyinUrl = url.includes('douyin.com') || url.includes('iesdouyin.com');
+        
+        let response;
+        
+        if (isDouyinUrl) {
+            // 对抖音链接使用适当的用户代理
+            response = await fetch(url, { 
+                method: 'HEAD',
+                redirect: 'follow',
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 10_3_1 like Mac OS X) AppleWebKit/603.1.30 (KHTML, like Gecko) Version/10.0 Mobile/14E304 Safari/602.1'
+                }
+            });
+        } else {
+            // 对其他链接使用默认方式
+            response = await fetch(url, { 
+                method: 'HEAD',
+                redirect: 'follow'
+            });
+        }
+        
+        const headers = {
+            contentType: response.headers.get('content-type') || 'unknown',
+            contentLength: response.headers.get('content-length') || 'unknown',
+            lastModified: response.headers.get('last-modified') || 'unknown',
+            server: response.headers.get('server') || 'unknown'
+        };
+        
+        res.json({
+            success: true,
+            originalUrl: url,
+            realUrl: response.url,
+            status: response.status,
+            redirected: response.redirected,
+            headers: headers,
+            urlType: isDouyinUrl ? 'douyin' : 'general'
+        });
+        
+    } catch (error) {
+        console.error('❌ Debug错误:', error.message);
+        res.json({ 
+            success: false, 
+            error: error.message,
+            originalUrl: url
+        });
+    }
+});
+
+// Debug端点: 直接下载测试
+app.get('/direct-download', async (req, res) => {
+    const url = req.query.url;
+    const filename = req.query.filename || 'test_download.mp4';
+    
+    if (!url) {
+        return res.status(400).send('缺少URL参数');
+    }
+    
+    try {
+        console.log('⬇️ Debug: 直接下载测试 -', filename);
+        
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const contentType = response.headers.get('content-type') || 'application/octet-stream';
+        const contentLength = response.headers.get('content-length');
+        
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        
+        if (contentLength) {
+            res.setHeader('Content-Length', contentLength);
+        }
+        
+        // 修复: 简化的方式
+        const text = await response.text();
+        res.send(text);
+        
+        console.log('✅ Debug下载已完成:', filename);
+        
+    } catch (error) {
+        console.error('❌ Debug下载错误:', error.message);
+        if (!res.headersSent) {
+            res.status(500).send('下载失败: ' + error.message);
+        }
+    }
+});
 
 PORT = getArgsPort()
 app.listen(PORT, () => {
