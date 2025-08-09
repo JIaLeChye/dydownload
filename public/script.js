@@ -123,6 +123,7 @@ function handleApiResponse(data) {
   console.log('API Response:', data);
   
   if (data.code === 0 && data.data) {
+    const debugMode = !!data.data.debugMode;
     let allUrls = [];
     let urlsWithType = []; // 新增：带类型信息的URL数组
     
@@ -155,6 +156,11 @@ function handleApiResponse(data) {
     console.log('All URLs:', allUrls);
     
     if (allUrls.length > 0) {
+      // 非 debug 模式下只保留第一个视频链接（如果全部是视频）
+      if (!debugMode && allUrls.length > 1) {
+        allUrls = [allUrls[0]];
+        urlsWithType = [urlsWithType[0]];
+      }
       // 填充原始链接区域（保留原有逻辑用于复制功能）
       const resultDom = document.getElementById("result");
       if (resultDom) {
@@ -162,7 +168,7 @@ function handleApiResponse(data) {
       }
       
       // 生成分开的链接列表（使用类型信息）
-      generateLinksListWithTypes(urlsWithType);
+  generateLinksListWithTypes(urlsWithType);
       
       // 显示原始链接区域，但复制按钮保持隐藏直到展开
       const rawLinksSection = document.getElementById("rawLinks");
@@ -177,12 +183,15 @@ function handleApiResponse(data) {
       // 不自动显示复制按钮，等到用户点击展开时才显示
       if (copyDom) copyDom.hidden = true;
       
-      // 显示媒体预览
-      displayMediaPreview(allUrls);
+  // 显示媒体预览（非 debug 只显示一条也兼容）
+  displayMediaPreview(allUrls);
       
       // 移动端友好的反馈
       if (window.innerWidth <= 768) {
         document.getElementById("mediaPreview").scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      if (!debugMode) {
+        console.log('单链接模式（非debug），如需查看所有候选：添加 ?debug=1 或设置环境变量 DEBUG_VIDEO_URLS=1');
       }
     } else {
       console.error('No URLs found in response');
@@ -535,27 +544,47 @@ function displayMediaPreview(urls) {
 
 function checkMediaType(url, index) {
   return new Promise((resolve) => {
-    // 先通过URL扩展名进行简单判断
+    // 智能URL分析 - 基于URL特征判断媒体类型，避免403错误
     const urlLower = url.toLowerCase();
-    const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
-    const videoExtensions = ['.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv'];
     
-    // 检查URL是否包含明确的扩展名
-    const isImageByUrl = imageExtensions.some(ext => urlLower.includes(ext));
-    const isVideoByUrl = videoExtensions.some(ext => urlLower.includes(ext));
+    // 视频URL特征识别
+    const videoIndicators = [
+      '.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', // 扩展名
+      'mime_type=video', '/video/', // 路径特征
+      'zjcdn.com', 'tiktokcdn.com', 'ixigua.com', // 抖音视频CDN
+      'v3-dy-o', 'v5-hl-hw-ov', 'v9-dy', 'v26-dy', // 抖音CDN前缀
+      'video_id=', 'aweme_id=', // 视频参数
+      'btag=', 'dy_q=', 'feature_id=' // 抖音特有参数
+    ];
     
-    if (isVideoByUrl) {
+    // 图片URL特征识别
+    const imageIndicators = [
+      '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', // 扩展名
+      'douyinpic.com', 'p3-pc-sign', 'p1-pc-sign', // 抖音图片CDN
+      'aweme-avatar', 'tos-cn-p-', // 图片路径特征
+      'image/', 'pic/', 'avatar/' // 通用图片路径
+    ];
+    
+    // 检查视频特征
+    const isVideo = videoIndicators.some(indicator => urlLower.includes(indicator));
+    
+    // 检查图片特征
+    const isImage = imageIndicators.some(indicator => urlLower.includes(indicator));
+    
+    if (isVideo) {
+      // 识别为视频，直接返回而不进行网络请求
       resolve({
         url: url,
         type: 'video',
         index: index,
-        loaded: true
+        loaded: true,
+        source: 'url-analysis'
       });
       return;
     }
     
-    if (isImageByUrl) {
-      // 对于图片，尝试加载以获取尺寸信息
+    if (isImage) {
+      // 识别为图片，尝试加载获取尺寸（图片通常没有CORS限制）
       const img = new Image();
       img.crossOrigin = "anonymous";
       
@@ -564,9 +593,10 @@ function checkMediaType(url, index) {
           url: url,
           type: 'image',
           index: index,
-          loaded: false
+          loaded: true, // 即使加载失败，也认为是有效图片
+          source: 'url-analysis-timeout'
         });
-      }, 3000);
+      }, 2000); // 缩短超时时间
       
       img.onload = function() {
         clearTimeout(timeout);
@@ -576,7 +606,8 @@ function checkMediaType(url, index) {
           index: index,
           loaded: true,
           width: this.naturalWidth,
-          height: this.naturalHeight
+          height: this.naturalHeight,
+          source: 'image-loaded'
         });
       };
       
@@ -586,7 +617,8 @@ function checkMediaType(url, index) {
           url: url,
           type: 'image',
           index: index,
-          loaded: false
+          loaded: true, // 仍然认为是图片，只是加载失败
+          source: 'image-error'
         });
       };
       
@@ -594,83 +626,26 @@ function checkMediaType(url, index) {
       return;
     }
     
-    // 如果无法通过URL判断，使用HEAD请求检查Content-Type
-    fetch(url, { method: 'HEAD' })
-      .then(response => {
-        const contentType = response.headers.get('content-type');
-        if (contentType) {
-          if (contentType.startsWith('image/')) {
-            // 是图片，加载以获取尺寸
-            const img = new Image();
-            img.crossOrigin = "anonymous";
-            
-            const timeout = setTimeout(() => {
-              resolve({
-                url: url,
-                type: 'image',
-                index: index,
-                loaded: false
-              });
-            }, 3000);
-            
-            img.onload = function() {
-              clearTimeout(timeout);
-              resolve({
-                url: url,
-                type: 'image',
-                index: index,
-                loaded: true,
-                width: this.naturalWidth,
-                height: this.naturalHeight
-              });
-            };
-            
-            img.onerror = function() {
-              clearTimeout(timeout);
-              resolve({
-                url: url,
-                type: 'image',
-                index: index,
-                loaded: false
-              });
-            };
-            
-            img.src = url;
-          } else if (contentType.startsWith('video/')) {
-            resolve({
-              url: url,
-              type: 'video',
-              index: index,
-              loaded: true
-            });
-          } else {
-            // 默认假设是视频
-            resolve({
-              url: url,
-              type: 'video',
-              index: index,
-              loaded: false
-            });
-          }
-        } else {
-          // 无Content-Type，默认假设是视频
-          resolve({
-            url: url,
-            type: 'video',
-            index: index,
-            loaded: false
-          });
-        }
-      })
-      .catch(() => {
-        // 请求失败，默认假设是视频
-        resolve({
-          url: url,
-          type: 'video',
-          index: index,
-          loaded: false
-        });
+    // 如果无法确定类型，根据URL长度和复杂度进行推断
+    if (urlLower.includes('?') && url.length > 200) {
+      // 长URL且有参数，通常是视频
+      resolve({
+        url: url,
+        type: 'video',
+        index: index,
+        loaded: true,
+        source: 'heuristic-video'
       });
+    } else {
+      // 简短URL，可能是图片
+      resolve({
+        url: url,
+        type: 'image',
+        index: index,
+        loaded: true,
+        source: 'heuristic-image'
+      });
+    }
   });
 }
 
@@ -798,42 +773,50 @@ function downloadMedia(url, index) {
     const mediaItem = document.querySelector(`[data-index="${index}"]`);
     const isImage = mediaItem && mediaItem.querySelector('img');
     const filePrefix = isImage ? 'douyin_image' : 'douyin_video';
-    const fileName = `${filePrefix}_${timestamp}_${index + 1}${extension}`;
+    const fileName = `${filePrefix}_${timestamp}_${index + 1}${extension || (isImage ? '.jpg' : '.mp4')}`;
     
     // 显示下载开始的提示
-    showToast('📥 开始下载...', 'info');
+    showToast('📥 开始代理下载...', 'info');
     
-    // 使用 fetch 下载文件
-    fetch(url)
-      .then(response => {
-        if (!response.ok) {
-          throw new Error('网络响应错误');
-        }
-        return response.blob();
-      })
-      .then(blob => {
-        // 创建下载链接
-        const downloadUrl = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = downloadUrl;
-        link.download = fileName;
-        link.style.display = 'none';
-        
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        // 清理内存
-        window.URL.revokeObjectURL(downloadUrl);
-        
+    // 使用服务器代理下载，避免403错误
+    const proxyUrl = `/proxy-download?${new URLSearchParams({
+      url: url,
+      filename: fileName
+    })}`;
+    
+    // 创建隐藏的下载链接
+    const link = document.createElement('a');
+    link.href = proxyUrl;
+    link.download = fileName;
+    link.style.display = 'none';
+    
+    // 监听下载成功/失败
+    const handleDownload = () => {
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // 短延迟后显示成功信息
+      setTimeout(() => {
         showToast('✅ 下载完成', 'success');
+      }, 1000);
+    };
+    
+    // 先测试代理URL是否可用
+    fetch(proxyUrl, { method: 'HEAD' })
+      .then(response => {
+        if (response.ok) {
+          handleDownload();
+        } else {
+          throw new Error(`代理下载失败: ${response.status}`);
+        }
       })
       .catch(error => {
-        console.error('Download error:', error);
-        showToast('❌ 下载失败，尝试直接打开链接', 'error');
+        console.error('Proxy download error:', error);
+        showToast('❌ 代理下载失败，尝试直接下载', 'warning');
         
-        // 如果下载失败，则回退到直接打开链接
-        fallbackDownload(url, fileName);
+        // 如果代理失败，回退到直接下载
+        fallbackDirectDownload(url, fileName);
       });
     
   } catch (error) {
@@ -842,17 +825,56 @@ function downloadMedia(url, index) {
   }
 }
 
-function fallbackDownload(url, fileName) {
-  // 回退方案：直接创建下载链接
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName;
-  link.target = '_blank';
-  link.style.display = 'none';
-  
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+function fallbackDirectDownload(url, fileName) {
+  // 回退方案：使用fetch直接下载（可能会遇到403，但仍然尝试）
+  fetch(url, {
+    method: 'GET',
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Referer': 'https://www.douyin.com/',
+      'Accept': 'video/mp4,video/*,image/*,*/*',
+      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+      'Cache-Control': 'no-cache'
+    },
+    mode: 'cors'
+  })
+    .then(response => {
+      if (!response.ok) {
+        throw new Error('网络响应错误');
+      }
+      return response.blob();
+    })
+    .then(blob => {
+      // 创建下载链接
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = fileName;
+      link.style.display = 'none';
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // 清理内存
+      window.URL.revokeObjectURL(downloadUrl);
+      
+      showToast('✅ 直接下载完成', 'success');
+    })
+    .catch(error => {
+      console.error('Direct download error:', error);
+      showToast('❌ 直接下载也失败，请手动打开链接', 'error');
+      
+      // 最后的回退：直接打开链接
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = '_blank';
+      link.style.display = 'none';
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    });
 }
 
 // 下载进度状态

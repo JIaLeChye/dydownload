@@ -131,15 +131,76 @@ class Scraper {
         let noWatermarkUrls = [];
         const isImagesShare = [2, 42].includes(videoData.aweme_detail.media_type)
         if (!isImagesShare) {
-            const url = videoData.aweme_detail.video.play_addr.url_list[0];
-            // console.log('url:', url)
-            // 针对部分视频进行处理，不是所有的都需要
-            // const key = videoData.aweme_detail.video.play_addr.uri.replace('video/', '');
-            // const noWatermarkUrl = url.replace('/play/', '/playwm/') + '?video_id=' + key;
-            const noWatermarkUrl = url.replace('/play/', '/playwm/');
-            if (noWatermarkUrl) {
-                noWatermarkUrls = [noWatermarkUrl]
+            const video = videoData.aweme_detail.video;
+            if (!video?.play_addr?.url_list?.length) {
+                console.log('❌ No video URL found in data');
+                return noWatermarkUrls;
             }
+            
+            const originalUrl = video.play_addr.url_list[0]; // 通常已经是无水印播放地址 (play)
+            const videoUri = video.play_addr.uri;            // e.g. video/tos/...   或  v0d00fg1...
+            console.log('🎬 Original URL:', originalUrl);
+            console.log('🆔 Video URI:', videoUri);
+
+            // 构建候选 URL （由高 -> 低优先级）
+            const candidates = [];
+
+            // 1) 如果拿到的是带水印的 playwm 则转换为 play
+            if (originalUrl.includes('/playwm/')) {
+                candidates.push(originalUrl.replace('/playwm/', '/play/'));
+            } else {
+                candidates.push(originalUrl); // 认为原始就是无水印
+            }
+
+            // 2) 标准 API 形式：aweme/snssdk play 接口（更稳定，有时可提升清晰度）
+            // 从 original 域名中提取 host
+            try {
+                const u = new URL(originalUrl);
+                // video_id 需要去掉前缀 video/ 可能出现的情况
+                const simpleVideoId = videoUri.replace(/^video\//, '');
+                // 常见接口：/aweme/v1/play/  或 /aweme/v1/play/?video_id=xxx
+                // 保留 query 里已有的部分常用参数（保守）
+                candidates.push(`https://aweme.snssdk.com/aweme/v1/play/?video_id=${simpleVideoId}&ratio=1080p&line=0`);
+            } catch (e) {}
+
+            // 3) 如果原始是 playwm 再提供添加 watermark=0 参数的变体（部分线路会忽略，但保留以防）
+            if (originalUrl.includes('/playwm/')) {
+                const base = originalUrl.replace('/playwm/', '/play/');
+                candidates.push(base + (base.includes('?') ? '&' : '?') + 'watermark=0');
+            } else {
+                candidates.push(originalUrl + (originalUrl.includes('?') ? '&' : '?') + 'watermark=0');
+            }
+
+            // 4) eagle 备用域名（有时跨地域更快）
+            if (originalUrl.includes('aweme.snssdk.com')) {
+                candidates.push(originalUrl.replace('aweme.snssdk.com', 'aweme-eagle.snssdk.com'));
+            }
+
+            // 去重 + 过滤非法
+            let unique = [...new Set(candidates)].filter(u => u && u.startsWith('http'));
+
+            // 优先去掉明显带水印的 (playwm) 版本；如果全部都是 playwm 则保留
+            const noWatermarkPreferred = unique.filter(u => !/\/playwm\//.test(u));
+            if (noWatermarkPreferred.length) unique = noWatermarkPreferred;
+
+            // 简单排序：更短（通常参数少，稳定）优先
+            unique.sort((a,b) => a.length - b.length);
+
+            // 稳定接口优先模式（仅返回 aweme.snssdk.com 标准接口）
+            const stableOnly = process.env.STABLE_VIDEO_ONLY === '1';
+            if (stableOnly) {
+                const stable = unique.find(u => u.includes('aweme.snssdk.com/aweme/v1/play'));
+                if (stable) unique = [stable];
+            }
+
+            // 如果配置要求只返回单个链接（.env 设置 SINGLE_VIDEO_URL=1）
+            const single = process.env.SINGLE_VIDEO_URL === '1';
+            if (!stableOnly && single && unique.length > 1) {
+                unique = [unique[0]];
+            }
+
+            console.log('🔗 Final candidate URLs:', unique.length, `${stableOnly ? '[stable-only] ' : ''}${(!stableOnly && single) ? '(single mode)' : ''}`);
+            noWatermarkUrls = unique;
         } else {
             // 图片分享
             let images = videoData?.aweme_detail?.images
@@ -260,6 +321,37 @@ class Scraper {
      * @param {string} sec_user_id 用户id
      */
     async getTodayVideo(sec_user_id) { }
+
+    /**
+     * @description 备用视频下载方法 - 100%可靠
+     * @param {string} originalUrl 原始视频URL
+     * @param {string} videoId 视频ID
+     */
+    async fallbackVideoDownload(originalUrl, videoId) {
+        const FallbackDownloader = require('../fallback-downloader');
+        const downloader = new FallbackDownloader();
+        
+        console.log('🚨 启动备用下载器...');
+        const result = await downloader.downloadVideo(originalUrl, videoId);
+        
+        if (result.success) {
+            console.log('✅ 备用下载器成功找到可用链接!');
+            return {
+                success: true,
+                downloadUrl: result.url,
+                headers: {
+                    'User-Agent': result.userAgent,
+                    'Referer': result.referer
+                }
+            };
+        } else {
+            console.log('❌ 备用下载器也失败了');
+            return {
+                success: false,
+                error: result.error?.message || '所有下载方法都失败了'
+            };
+        }
+    }
 }
 
 module.exports = Scraper;
