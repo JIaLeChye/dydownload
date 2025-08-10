@@ -179,12 +179,8 @@ FetchError: invalid json response body at https://www.douyin.com/aweme/v1/web/aw
 
 ```javascript
 // 更新这行，使用完整的cookie字符串
-'cookie': 'sid_guard=你的sid_guard值;
+'cookie': 'sid_guard=你的sid_guard值'
 ```
-
-6. **重要**：还需要更新第97行API URL中的对应参数：
-   - 更新 `webid` 参数值
-   - 更新 `msToken` 参数值
 
 **完整示例**：
 ```javascript
@@ -369,7 +365,6 @@ echo "PORT=8080" > .env
 - **原作者**: [helson-lin](https://github.com/helson-lin) - [douyin_no_watermark](https://github.com/helson-lin/douyin_no_watermark)
 - **X-Bogus.js**: [Douyin_TikTok_Download_API](https://github.com/Evil0ctal/Douyin_TikTok_Download_API)
 - **视频下载修复**：[douyin-downloader](https://github.com/jiji262/douyin-downloader)
-
 ---
 
 <div align="center">
