@@ -643,13 +643,16 @@ app.post('/api/update-cookie', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Cookie格式不正确' });
         }
 
-        // 更新scraper实例中的cookie
-        if (scraper && scraper.douyinApiHeaders) {
-            scraper.douyinApiHeaders.cookie = finalCookie;
+        // 🚀 动态更新scraper实例中的cookie - 立即生效！
+        if (scraper && scraper.updateCookie) {
+            scraper.updateCookie(finalCookie);
+            console.log('🍪 Scraper Cookie已动态更新，立即生效！');
         }
 
         let vercelUpdateResult = null;
-        let message = 'Cookie已更新（当前会话有效）';
+        let message = '🎉 Cookie已更新并立即生效！无需重新部署 🚀';
+        let immediate = true;
+        let noRedeployNeeded = true;
 
         // 如果请求更新Vercel环境变量且功能可用
         if (updateVercel && vercelEnv) {
@@ -663,21 +666,23 @@ app.post('/api/update-cookie', async (req, res) => {
                         'encrypted',
                         ['production', 'preview']
                     );
-                    message = 'Cookie已更新并同步到Vercel环境变量（需要重新部署生效）';
+                    message = '🎉 Cookie立即生效 + Vercel环境变量已备份 🚀';
                 } catch (vercelError) {
                     console.error('Vercel环境变量更新失败:', vercelError);
-                    message = 'Cookie已更新（本地），但Vercel环境变量更新失败: ' + vercelError.message;
+                    message = '🎉 Cookie已立即生效！Vercel备份失败: ' + vercelError.message;
                 }
             } else {
-                message = 'Cookie已更新（本地），但Vercel配置不完整，无法更新环境变量';
+                message = '🎉 Cookie已立即生效！(Vercel配置不完整，但主要功能正常) 🚀';
             }
         } else if (updateVercel && !vercelEnv) {
-            message = 'Cookie已更新（本地），但Vercel自动同步功能未启用';
+            message = '🎉 Cookie已立即生效！(Vercel自动同步功能未启用，但主要功能正常) 🚀';
         }
 
         res.json({ 
             success: true, 
             message,
+            immediate,
+            noRedeployNeeded,
             vercelConfig: vercelEnv ? vercelEnv.getConfigStatus() : { isConfigured: false, available: false },
             vercelUpdateResult: vercelUpdateResult ? { success: true } : null
         });

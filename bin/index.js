@@ -19,6 +19,29 @@ class Scraper {
     }
 
     /**
+     * 🚀 动态更新Cookie - 无需重新部署！
+     * @param {string} newCookie - 新的Cookie值
+     */
+    updateCookie(newCookie) {
+        if (!newCookie || typeof newCookie !== 'string') {
+            throw new Error('Cookie值无效');
+        }
+        
+        // 更新douyinApiHeaders中的cookie
+        this.douyinApiHeaders.cookie = newCookie.trim();
+        
+        console.log('🍪 Cookie已动态更新，立即生效！');
+        return true;
+    }
+
+    /**
+     * 获取当前Cookie状态
+     */
+    getCurrentCookie() {
+        return this.douyinApiHeaders.cookie;
+    }
+
+    /**
      * @description get videoId by share url
      * @param {string} url 
      * @returns {string} videoId
