@@ -251,6 +251,271 @@ body {
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
 }
 
+/* Cookie update button */
+.cookie-update-btn {
+  position: fixed !important;
+  top: 80px !important;
+  right: 20px !important;
+  z-index: 1001 !important;
+  background: #ffc107 !important;
+  color: #212529 !important;
+  border: none !important;
+  border-radius: 50% !important;
+  width: 50px !important;
+  height: 50px !important;
+  font-size: 1.5rem !important;
+  cursor: pointer !important;
+  transition: all 0.3s ease !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2) !important;
+}
+
+.cookie-update-btn:hover {
+  transform: scale(1.1) !important;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3) !important;
+  background: #ffca2c !important;
+}
+
+.cookie-update-btn:active {
+  transform: scale(0.95) !important;
+}
+
+/* Cookie modal styles */
+.cookie-modal {
+  display: none;
+  position: fixed;
+  z-index: 1100;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(3px);
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.cookie-modal.show {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cookie-modal-dialog {
+  max-width: 600px;
+  width: 90%;
+  max-height: 80vh;
+  background: var(--card-bg);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  animation: modalSlideIn 0.3s ease;
+}
+
+@keyframes modalSlideIn {
+  from {
+    transform: translateY(-50px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.cookie-modal-header {
+  padding: 20px 20px 15px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cookie-modal-title {
+  color: white !important;
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.cookie-modal-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: rgba(255, 255, 255, 0.8) !important;
+  cursor: pointer;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.cookie-modal-close:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: white !important;
+}
+
+.cookie-modal-body {
+  padding: 20px;
+}
+
+/* Cookie模态框文本颜色 */
+.cookie-modal-body p,
+.cookie-modal-body .form-label,
+.cookie-modal-body .form-text,
+.cookie-modal-body small {
+  color: white !important;
+}
+
+.cookie-modal-body .text-muted {
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+
+.cookie-textarea {
+  width: 100%;
+  min-height: 120px;
+  padding: 15px;
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--input-bg, #ffffff);
+  color: var(--text-color);
+  font-family: 'Monaco', 'Consolas', monospace;
+  font-size: 14px;
+  line-height: 1.4;
+  resize: vertical;
+  transition: border-color 0.3s ease;
+}
+
+.cookie-textarea:focus {
+  outline: none;
+  border-color: var(--btn-primary-bg, #0d6efd);
+  box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.1);
+}
+
+.cookie-status {
+  margin-top: 15px;
+  padding: 10px 15px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  display: none;
+}
+
+.cookie-status.success {
+  display: block;
+  background: rgba(25, 135, 84, 0.1);
+  color: var(--success-color, #198754);
+  border: 1px solid rgba(25, 135, 84, 0.2);
+}
+
+.cookie-status.error {
+  display: block;
+  background: rgba(220, 53, 69, 0.1);
+  color: var(--danger-color, #dc3545);
+  border: 1px solid rgba(220, 53, 69, 0.2);
+}
+
+.cookie-status.info {
+  display: block;
+  background: rgba(13, 110, 253, 0.1);
+  color: var(--info-color, #0d6efd);
+  border: 1px solid rgba(13, 110, 253, 0.2);
+}
+
+.cookie-modal-footer {
+  padding: 15px 20px 20px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.cookie-btn {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+}
+
+.cookie-btn-primary {
+  background: var(--btn-primary-bg, #0d6efd);
+  color: white;
+}
+
+.cookie-btn-primary:hover {
+  background: var(--btn-primary-hover-bg, #0b5ed7);
+}
+
+.cookie-btn-secondary {
+  background: var(--btn-secondary-bg, #6c757d);
+  color: white;
+}
+
+.cookie-btn-secondary:hover {
+  background: var(--btn-secondary-hover-bg, #565e64);
+}
+
+.cookie-btn-info {
+  background: var(--btn-info-bg, #0dcaf0);
+  color: white;
+}
+
+.cookie-btn-info:hover {
+  background: var(--btn-info-hover-bg, #31d2f2);
+}
+
+/* Vercel options styling */
+.vercel-options {
+  padding-top: 15px;
+  border-top: 1px solid var(--border-color, #dee2e6);
+}
+
+.vercel-config-status {
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.vercel-config-status .text-success {
+  color: var(--success-color, #198754) !important;
+}
+
+.vercel-config-status .text-warning {
+  color: var(--warning-color, #ffc107) !important;
+}
+
+.vercel-config-status .btn-link {
+  color: var(--primary-color, #0d6efd);
+  text-decoration: none;
+  font-size: inherit;
+}
+
+.vercel-config-status .btn-link:hover {
+  text-decoration: underline;
+}
+
+.form-check-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.form-check-label {
+  cursor: pointer;
+}
+
+.form-check-input:disabled + .form-check-label {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* Mobile theme toggle positioning */
 @media (max-width: 768px) {
   .theme-toggle {
@@ -259,6 +524,31 @@ body {
     width: 45px;
     height: 45px;
     font-size: 1.3rem;
+  }
+  
+  .cookie-update-btn {
+    top: 70px !important;
+    right: 15px !important;
+    width: 45px !important;
+    height: 45px !important;
+    font-size: 1.3rem !important;
+  }
+  
+  .cookie-modal-dialog {
+    width: 95%;
+    margin: 10px;
+  }
+  
+  .cookie-modal-header,
+  .cookie-modal-body,
+  .cookie-modal-footer {
+    padding-left: 15px;
+    padding-right: 15px;
+  }
+  
+  .cookie-textarea {
+    min-height: 100px;
+    font-size: 13px;
   }
 }
 

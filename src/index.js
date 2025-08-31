@@ -4,7 +4,9 @@ const express = require('express')
 const path = require('path')
 const fs = require('fs')
 const { marked } = require('marked')
-require('dotenv').config();
+
+// 配置dotenv加载.env.local文件
+require('dotenv').config({ path: path.join(__dirname, '../.env.local') });
 
 const app = express()
 app.use(express.static(path.join(__dirname, '../public')))
@@ -23,8 +25,7 @@ app.get('/readme', (req, res) => {
 // zjcdn直链API - 优先使用zjcdn域名的直接链接
 app.post('/zjcdn', async (req, res) => {
     const url = req.body.url;
-    console.log('🚀 zjcdn API收到请求:', url);
-    
+
     // 简单的URL有效性预检查
     if (!url || typeof url !== 'string') {
         return res.send({ code: 1, msg: 'URL参数无效', data: null });
@@ -35,21 +36,17 @@ app.post('/zjcdn', async (req, res) => {
     }
     
     try {
-        console.log('📎 开始解析videoId...');
+
         const douyinId = await scraper.getDouyinVideoId(url);
-        console.log('✅ VideoId解析成功:', douyinId);
-        
-        console.log('📡 开始获取视频数据...');
+
         const douyinData = await scraper.getDouyinVideoData(douyinId);
-        console.log('✅ 视频数据获取成功');
-        
+
         // 检查是否为图片集分享
         const isImagesShare = [2, 42].includes(douyinData.aweme_detail.media_type);
-        console.log('🎭 媒体类型检查:', douyinData.aweme_detail.media_type, '是否为图片集:', isImagesShare);
-        
+
         if (isImagesShare) {
             // 图片集分享
-            console.log('📸 处理图片集分享...');
+
             let douyinUrls = await scraper.getDouyinNoWatermarkVideo(douyinData);
             res.send({ 
                 code: 0, 
@@ -65,11 +62,11 @@ app.post('/zjcdn', async (req, res) => {
             });
         } else {
             // 视频分享 - 优先获取zjcdn直链
-            console.log('🎬 处理视频分享，尝试获取zjcdn直链...');
+
             const zjcdnUrls = await scraper.getZjcdnDirectUrls(douyinData);
             
             if (zjcdnUrls.length > 0) {
-                console.log('✅ zjcdn直链获取成功:', zjcdnUrls.length, '个');
+
                 res.send({ 
                     code: 0, 
                     data: { 
@@ -84,7 +81,7 @@ app.post('/zjcdn', async (req, res) => {
                 });
             } else {
                 // 回退到常规方法
-                console.log('⚠️ zjcdn直链获取失败，使用常规方法');
+
                 let douyinUrls = await scraper.getDouyinNoWatermarkVideo(douyinData);
                 res.send({ 
                     code: 0, 
@@ -121,14 +118,11 @@ app.post('/zjcdn', async (req, res) => {
 // 测试端点 - 用于调试URL解析问题
 app.post('/test-url', async (req, res) => {
     const url = req.body.url;
-    console.log('🧪 测试URL解析:', url);
-    
+
     try {
-        console.log('📎 步骤1: 解析videoId...');
+
         const douyinId = await scraper.getDouyinVideoId(url);
-        console.log('✅ VideoId:', douyinId);
-        
-        console.log('📡 步骤2: 获取视频数据...');
+
         const douyinData = await scraper.getDouyinVideoData(douyinId);
         
         const result = {
@@ -142,8 +136,7 @@ app.post('/test-url', async (req, res) => {
             videoUrls: douyinData?.aweme_detail?.video?.play_addr?.url_list || [],
             imageUrls: douyinData?.aweme_detail?.images?.map(img => img?.url_list?.[0]) || []
         };
-        
-        console.log('✅ 测试成功');
+
         res.json(result);
         
     } catch (e) {
@@ -167,8 +160,7 @@ app.post('/test-url', async (req, res) => {
 // URL有效性检查端点
 app.post('/check-url', async (req, res) => {
     const url = req.body.url;
-    console.log('🔍 检查URL有效性:', url);
-    
+
     try {
         // 基本格式检查
         if (!url || typeof url !== 'string') {
@@ -211,10 +203,9 @@ app.post('/check-url', async (req, res) => {
 // 直接测试videoId的端点（绕过URL解析）
 app.post('/test-videoid', async (req, res) => {
     const videoId = req.body.videoId;
-    console.log('🎯 直接测试VideoId:', videoId);
-    
+
     try {
-        console.log('📡 获取视频数据...');
+
         const douyinData = await scraper.getDouyinVideoData(videoId);
         
         const result = {
@@ -226,8 +217,7 @@ app.post('/test-videoid', async (req, res) => {
             hasVideo: !![2, 42].includes(douyinData?.aweme_detail?.media_type) ? false : true,
             hasImages: [2, 42].includes(douyinData?.aweme_detail?.media_type)
         };
-        
-        console.log('✅ VideoId测试成功');
+
         res.json(result);
         
     } catch (e) {
@@ -370,8 +360,7 @@ app.get('/proxy-download', async (req, res) => {
     }
     
     try {
-        console.log('🔄 服务器代理下载:', filename || 'unknown');
-        
+
         const fetch = require('node-fetch');
         
         // 直接获取文件内容
@@ -421,10 +410,7 @@ app.get('/proxy-download', async (req, res) => {
                 }
             }
         }
-        
-        console.log('📁 最终文件名:', finalFilename);
-        console.log('📋 内容类型:', contentType);
-        
+
         // 设置文件下载头
         res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(finalFilename)}"`);
@@ -433,20 +419,16 @@ app.get('/proxy-download', async (req, res) => {
         
         if (contentLength) {
             res.setHeader('Content-Length', contentLength);
-            console.log('📏 文件大小:', Math.round(contentLength / 1024 / 1024 * 100) / 100 + ' MB');
+
         }
-        
-        console.log('✅ 开始代理下载:', finalFilename);
-        
+
         // 修复: 使用 arrayBuffer 处理二进制内容
         const arrayBuffer = await response.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
         
         res.write(buffer);
         res.end();
-        
-        console.log('✅ 代理下载已完成:', finalFilename);
-        
+
     } catch (error) {
         console.error('❌ 代理下载错误:', error.message);
         if (!res.headersSent) {
@@ -464,8 +446,7 @@ app.get('/proxy-video', async (req, res) => {
     }
     
     try {
-        console.log('🎬 视频代理预览:', url.substring(0, 100) + '...');
-        
+
         const fetch = require('node-fetch');
         
         // 直接获取文件内容
@@ -489,10 +470,9 @@ app.get('/proxy-video', async (req, res) => {
         // 获取文件信息
         const contentType = response.headers.get('content-type') || 'video/mp4';
         const contentLength = response.headers.get('content-length');
-        
-        console.log('📋 视频内容类型:', contentType);
+
         if (contentLength) {
-            console.log('📏 视频大小:', Math.round(contentLength / 1024 / 1024 * 100) / 100 + ' MB');
+
         }
         
         // 设置视频流响应头（用于预览，不是下载）
@@ -503,18 +483,14 @@ app.get('/proxy-video', async (req, res) => {
         if (contentLength) {
             res.setHeader('Content-Length', contentLength);
         }
-        
-        console.log('✅ 开始视频流传输');
-        
+
         // 修复: 使用 arrayBuffer 处理视频流
         const arrayBuffer = await response.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
         
         res.write(buffer);
         res.end();
-        
-        console.log('✅ 视频流传输完成');
-        
+
     } catch (error) {
         console.error('❌ 视频代理错误:', error.message);
         if (!res.headersSent) {
@@ -535,7 +511,6 @@ const getArgsPort = () => {
     }
 }
 
-
 // Debug端点: 获取真实URL信息
 app.get('/get-real-url', async (req, res) => {
     const url = req.query.url;
@@ -545,8 +520,7 @@ app.get('/get-real-url', async (req, res) => {
     }
     
     try {
-        console.log('🔍 Debug: 获取真实URL信息 -', url);
-        
+
         // 检查是否是抖音链接，如果是则使用特殊处理
         const isDouyinUrl = url.includes('douyin.com') || url.includes('iesdouyin.com');
         
@@ -627,15 +601,123 @@ app.get('/direct-download', async (req, res) => {
         // 修复: 简化的方式
         const text = await response.text();
         res.send(text);
-        
-        console.log('✅ Debug下载已完成:', filename);
-        
+
     } catch (error) {
         console.error('❌ Debug下载错误:', error.message);
         if (!res.headersSent) {
             res.status(500).send('下载失败: ' + error.message);
         }
     }
+});
+
+// Cookie更新API - 支持环境变量和Vercel自动更新
+let VercelEnvManager, vercelEnv;
+
+// 尝试加载Vercel环境管理器（可选功能）
+try {
+  VercelEnvManager = require('./vercel-env-manager');
+  vercelEnv = new VercelEnvManager();
+} catch (error) {
+  console.log('💡 Vercel自动同步功能未启用（这是正常的，基础功能仍可正常使用）');
+  vercelEnv = null;
+}
+
+app.post('/api/update-cookie', async (req, res) => {
+    try {
+        const { cookie, updateVercel = false } = req.body;
+        
+        if (!cookie || cookie.trim().length === 0) {
+            return res.status(400).json({ success: false, message: 'Cookie值不能为空' });
+        }
+
+        let finalCookie = cookie.trim();
+
+        // 智能格式处理
+        if (cookie.includes('sid_guard=')) {
+            // 完整cookie格式
+            finalCookie = cookie;
+        } else if (cookie.includes('%7C')) {
+            // 只有sid_guard值，自动包装
+            finalCookie = `sid_guard=${cookie};`;
+        } else {
+            return res.status(400).json({ success: false, message: 'Cookie格式不正确' });
+        }
+
+        // 更新scraper实例中的cookie
+        if (scraper && scraper.douyinApiHeaders) {
+            scraper.douyinApiHeaders.cookie = finalCookie;
+        }
+
+        let vercelUpdateResult = null;
+        let message = 'Cookie已更新（当前会话有效）';
+
+        // 如果请求更新Vercel环境变量且功能可用
+        if (updateVercel && vercelEnv) {
+            const configStatus = vercelEnv.getConfigStatus();
+            
+            if (configStatus.isConfigured) {
+                try {
+                    vercelUpdateResult = await vercelEnv.updateEnvironmentVariable(
+                        'DOUYIN_COOKIE', 
+                        finalCookie,
+                        'encrypted',
+                        ['production', 'preview']
+                    );
+                    message = 'Cookie已更新并同步到Vercel环境变量（需要重新部署生效）';
+                } catch (vercelError) {
+                    console.error('Vercel环境变量更新失败:', vercelError);
+                    message = 'Cookie已更新（本地），但Vercel环境变量更新失败: ' + vercelError.message;
+                }
+            } else {
+                message = 'Cookie已更新（本地），但Vercel配置不完整，无法更新环境变量';
+            }
+        } else if (updateVercel && !vercelEnv) {
+            message = 'Cookie已更新（本地），但Vercel自动同步功能未启用';
+        }
+
+        res.json({ 
+            success: true, 
+            message,
+            vercelConfig: vercelEnv ? vercelEnv.getConfigStatus() : { isConfigured: false, available: false },
+            vercelUpdateResult: vercelUpdateResult ? { success: true } : null
+        });
+
+    } catch (error) {
+        console.error('Cookie更新错误:', error);
+        res.status(500).json({ success: false, message: '更新失败: ' + error.message });
+    }
+});
+
+// 新增：Vercel配置状态检查API
+app.get('/api/vercel-config', (req, res) => {
+    if (!vercelEnv) {
+        return res.json({
+            success: true,
+            config: { 
+                isConfigured: false, 
+                available: false,
+                hasToken: false,
+                hasProjectId: false 
+            },
+            instructions: {
+                note: 'Vercel自动同步功能为可选功能',
+                vercelToken: '在Vercel Dashboard > Settings > Tokens中创建',
+                projectId: '在项目Settings > General中找到Project ID',
+                teamId: '如果项目属于团队，在团队设置中找到Team ID'
+            }
+        });
+    }
+
+    const configStatus = vercelEnv.getConfigStatus();
+    res.json({
+        success: true,
+        config: { ...configStatus, available: true },
+        instructions: {
+            vercelToken: '在Vercel Dashboard > Settings > Tokens中创建',
+            projectId: '在项目Settings > General中找到Project ID',
+            teamId: '如果项目属于团队，在团队设置中找到Team ID'
+        }
+    });
 });
 
 PORT = getArgsPort()

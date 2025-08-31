@@ -4,4 +4,6 @@ media
 test.js
 dist/**
 .env
+.env.local
+.env.*.local
 pnpm-lock.yaml

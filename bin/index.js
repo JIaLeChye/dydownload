@@ -13,7 +13,7 @@ class Scraper {
             'accept-encoding': 'gzip, deflate, br',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
             'referer': 'https://www.douyin.com/',
-            'cookie': 'sid_guard=eaf3cfd1fd30ba206ace29421e88b59b%7C1754657837%7C5184000%7CTue%2C+07-Oct-2025+12%3A57%3A17+GMT;'
+            'cookie': process.env.DOUYIN_COOKIE || 'sid_guard=替换为您的sid_guard值;'
             // 其他请求头
         };
     }
@@ -36,8 +36,7 @@ class Scraper {
         return new Promise(async (resolve, reject) => {
             for (let i = 0; i < userAgents.length; i++) {
                 const userAgent = userAgents[i];
-                console.log(`🔍 尝试用户代理 ${i + 1}/${userAgents.length}:`, userAgent.substring(0, 50) + '...');
-                
+
                 const headers = {
                     authority: 'v.douyin.com',
                     'user-agent': userAgent,
@@ -49,88 +48,49 @@ class Scraper {
                         redirect: 'follow', // 跟随重定向
                         timeout: 10000
                     });
-                    
-                    console.log('🔍 原始URL:', url);
-                    console.log('🔄 重定向后URL:', res?.url);
-                    
+
                     if (!res?.url) {
-                        console.log('❌ 无法获取重定向URL，尝试下一个用户代理');
+
                         continue;
                     }
                     
                     // 如果重定向到主页，尝试下一个用户代理
                     if (res.url === 'https://www.douyin.com/' || res.url === 'https://www.douyin.com') {
-                        console.log('⚠️ 重定向到主页，尝试下一个用户代理');
+
                         continue;
                     }
                     
-                    // 尝试多种正则表达式模式匹配 - 更新以支持新的抖音链接格式
+                    // 尝试多种正则表达式模式匹配
                     const patterns = [
-                        // 标准模式
                         /(slides|video|note)\/(\d+)/, // 原有模式
                         /\/video\/(\d+)/, // 简单video模式
                         /\/note\/(\d+)/, // note模式
                         /\/slides\/(\d+)/, // slides模式
-                        
-                        // 查询参数模式
                         /aweme_id[=:](\d+)/, // 查询参数模式
-                        /video_id[=:](\d+)/, // video_id参数
-                        /[?&]id[=:](\d+)/, // id参数
-                        
-                        // 不同长度的数字ID模式
                         /\/(\d{19})/, // 19位数字ID
                         /\/(\d{18})/, // 18位数字ID
                         /\/(\d{17})/, // 17位数字ID
-                        /\/(\d{16})/, // 16位数字ID (新增)
-                        /\/(\d{15})/, // 15位数字ID (新增)
-                        
-                        // 新的抖音链接格式 (2025.8更新)
-                        /www\.douyin\.com\/video\/(\d+)/, // 完整域名格式
-                        /douyin\.com.*?\/(\d{15,20})/, // 通用抖音域名匹配
-                        /v\.douyin\.com.*?(\d{15,20})/, // v.douyin.com 格式
-                        
-                        // 移动端特殊格式
-                        /share\/video\/(\d+)/, // 移动端分享格式
-                        /user\/.*?\/video\/(\d+)/, // 用户视频页面格式
-                        
-                        // 备用匹配模式 - 匹配URL中任何15-20位的数字
-                        /(\d{15,20})/ // 最宽松的匹配，作为最后备用
                     ];
                     
                     let videoId = null;
                     let matchedPattern = '';
-                    
-                    console.log('🔍 待匹配的URL:', res.url);
-                    console.log('📏 URL长度:', res.url.length);
                     
                     for (let j = 0; j < patterns.length; j++) {
                         const match = res.url.match(patterns[j]);
                         if (match) {
                             videoId = match[match.length - 1]; // 取最后一个捕获组
                             matchedPattern = `Pattern ${j + 1}: ${patterns[j]}`;
-                            console.log('✅ 匹配成功:', matchedPattern, '→', videoId);
-                            
-                            // 验证 videoId 的有效性（长度检查）
-                            if (videoId && videoId.length >= 15 && videoId.length <= 20) {
-                                console.log('✅ VideoId长度验证通过:', videoId.length, '位');
-                                break;
-                            } else {
-                                console.log('⚠️ VideoId长度异常:', videoId?.length, '位，继续尝试其他模式');
-                                videoId = null; // 重置，继续尝试其他模式
-                            }
+
+                            break;
                         }
                     }
                     
                     if (videoId) {
-                        console.log('🎯 最终获取到的videoId:', videoId);
-                        console.log('📊 使用的匹配模式:', matchedPattern);
-                        console.log('👤 成功的用户代理:', userAgent.substring(0, 80) + '...');
+
                         resolve(videoId);
                         return;
                     } else {
-                        console.log('❌ 当前用户代理无法匹配videoId');
-                        console.log('📝 重定向后的完整URL:', res.url);
-                        console.log('🔄 准备尝试下一个用户代理...');
+                        console.log('❌ 当前用户代理无法匹配videoId，尝试下一个');
                         continue;
                     }
                     
@@ -142,29 +102,7 @@ class Scraper {
             
             // 所有用户代理都尝试失败
             console.log('❌ 所有用户代理都无法获取有效的videoId');
-            console.log('📋 调试信息总结:');
-            console.log('   - 原始URL:', url);
-            console.log('   - 尝试的用户代理数量:', userAgents.length);
-            console.log('   - 建议检查: 1) URL是否完整 2) 链接是否过期 3) 抖音是否更新了链接格式');
-            console.log('   - 如需帮助，请提供完整的分享链接和错误信息');
-            
-            reject(new Error(`无法从任何用户代理获取videoId。
-                
-🔍 可能的原因:
-1. 抖音更新了分享链接格式
-2. 链接已过期或无效
-3. 网络连接问题
-4. 需要更新解析规则
-
-📝 调试信息:
-- 原始URL: ${url}
-- 尝试的用户代理: ${userAgents.length}个
-- 时间: ${new Date().toISOString()}
-
-💡 解决建议:
-- 确认链接来自最新版抖音APP
-- 检查链接是否完整复制
-- 如问题持续，请在GitHub提交issue`));
+            reject(new Error(`无法从任何用户代理获取videoId。请检查URL是否有效或已过期。URL: ${url}`));
         });
     }
     /**
@@ -203,32 +141,20 @@ class Scraper {
     * @returns {string} videoId
     */
     async getDouyinVideoId(url) {
-        console.log('📎 正在解析URL:', url);
-        
-        // 首先尝试从URL中直接提取可能的videoId - 支持更多格式
-        const directIdPatterns = [
-            /(\d{19}|\d{18}|\d{17}|\d{16}|\d{15})/, // 支持15-19位数字
-            /video\/(\d+)/, // video/ 格式
-            /aweme_id[=:](\d+)/, // 查询参数格式
-            /video_id[=:](\d+)/, // video_id 参数格式
-        ];
-        
-        for (const pattern of directIdPatterns) {
-            const directIdMatch = url.match(pattern);
-            if (directIdMatch) {
-                const extractedId = directIdMatch[1] || directIdMatch[0];
-                console.log('🎯 从URL直接提取到可能的videoId:', extractedId, '(使用模式:', pattern, ')');
-                
-                // 验证这个ID是否有效
-                try {
-                    const testData = await this.getDouyinVideoData(extractedId);
-                    if (testData && testData.aweme_detail) {
-                        console.log('✅ 直接提取的videoId验证成功');
-                        return extractedId;
-                    }
-                } catch (e) {
-                    console.log('⚠️ 直接提取的videoId验证失败:', e.message, '继续尝试其他模式');
+
+        // 首先尝试从URL中直接提取可能的videoId
+        const directIdMatch = url.match(/(\d{19}|\d{18}|\d{17})/);
+        if (directIdMatch) {
+
+            // 验证这个ID是否有效
+            try {
+                const testData = await this.getDouyinVideoData(directIdMatch[0]);
+                if (testData && testData.aweme_detail) {
+
+                    return directIdMatch[0];
                 }
+            } catch (e) {
+                console.log('⚠️ 直接提取的videoId验证失败，继续常规解析');
             }
         }
         
@@ -244,39 +170,18 @@ class Scraper {
         
         try {
             let videoId = await this.getVideoIdByShareUrl(relUrl[0]);
-            console.log('✅ 成功获取VideoId:', videoId);
+
             return videoId;
         } catch (error) {
             console.log('❌ 获取VideoId失败:', error.message);
             
-            // 最后尝试：如果是抖音相关链接，提供更详细的错误信息
-            if (relUrl[0].includes('douyin.com') || relUrl[0].includes('dy.toutiao.com')) {
-                console.log('🔍 检测到抖音域名，进行最后尝试解析');
-                const shortCode = relUrl[0].split('/').filter(part => part.length > 0).pop();
-                console.log('🔄 提取的短链接代码:', shortCode);
+            // 最后尝试：如果是v.douyin.com的链接，尝试手动解析
+            if (relUrl[0].includes('v.douyin.com')) {
+                const shortCode = relUrl[0].split('/').pop();
+                console.log('🔄 尝试解析短链接代码:', shortCode);
                 
-                // 提供详细的错误信息和建议
-                const enhancedError = new Error(`抖音链接解析失败 - 可能是新的链接格式
-
-🔍 详细信息:
-- 原始URL: ${url}
-- 解析的URL: ${relUrl[0]}
-- 短链接代码: ${shortCode}
-- 错误原因: ${error.message}
-
-💡 可能的解决方案:
-1. 确认使用的是最新版抖音APP的分享链接
-2. 检查链接是否完整复制（包括https://部分）
-3. 尝试重新从抖音APP获取分享链接
-4. 如果是Android抖音更新后的新格式，请在GitHub报告此问题
-
-📋 Debug信息:
-- 时间: ${new Date().toISOString()}
-- User-Agent测试: ${error.message.includes('用户代理') ? '失败' : '未知'}
-- URL格式: ${relUrl[0].includes('v.douyin.com') ? 'v.douyin.com' : 'other'}
-                `);
-                
-                throw enhancedError;
+                // 这里可以实现更高级的短链接解析逻辑
+                // 暂时抛出原始错误
             }
             
             throw error;
@@ -300,8 +205,16 @@ class Scraper {
             const res = await fetch(new_url, {
                 headers: this.douyinApiHeaders
             })
-            const json = res.json();
-            return json;
+            
+            const text = await res.text();
+            
+            try {
+                const json = JSON.parse(text);
+                return json;
+            } catch (parseError) {
+                console.log('❌【DEBUG】JSON解析失败，可能是HTML错误页面或需要更新Cookie');
+                throw new Error('Cookie已失效，需要更新Cookie后重试');
+            }
         } catch (e) {
            throw new Error(e);
         }
@@ -334,7 +247,7 @@ class Scraper {
             if (!video) return zjcdnUrls;
             
             // 打印调试信息
-            console.log('🔍 调试视频数据结构:');
+
             console.log('   play_addr:', video.play_addr?.url_list?.slice(0, 2));
             console.log('   download_addr:', video.download_addr?.url_list?.slice(0, 2));
             
@@ -349,7 +262,7 @@ class Scraper {
             const zjcdnDirects = allUrls.filter(url => url && url.includes('zjcdn.com'));
             
             if (zjcdnDirects.length > 0) {
-                console.log('✅ 找到zjcdn直链:', zjcdnDirects.length, '个');
+
                 zjcdnDirects.forEach((url, index) => {
                     console.log(`   ${index + 1}. ${url.substring(0, 120)}...`);
                 });
@@ -420,7 +333,7 @@ class Scraper {
             const zjcdnUrls = await this.getZjcdnDirectUrls(videoData);
             if (zjcdnUrls.length > 0) {
                 candidates.push(...zjcdnUrls);
-                console.log('✅ 添加zjcdn直链:', zjcdnUrls.length, '个');
+
             }
 
             // 2) 如果原始URL就是zjcdn域名，确保在最前面
@@ -509,8 +422,6 @@ class Scraper {
         await download(url, dirname ? `media/${dirname}` : 'media', { filename: `${videoName}.mp4` })
     }
 
-
-
     /**
      * @description Replaces all special characters in the string (including Spaces)/替换字符串中的所有特殊字符（包含空格）
      * @date 2024/1/4 - 19:45:52
@@ -556,7 +467,7 @@ class Scraper {
                 const xbogus = sign(query, this.headers['User-Agent'])
                 const new_url = apiUrl + "&X-Bogus=" + xbogus
                 const headers = JSON.parse(JSON.stringify(this.douyinApiHeaders))
-                // headers.cookie += 'sessionid=69b218330b62e948d2f62a8f1a8e698c'
+                // headers.cookie += 'sessionid=your_sessionid_here'
                 const res = await fetch(new_url, { headers })
                 const data = await res.json()
                 const { aweme_list, max_cursor } = data

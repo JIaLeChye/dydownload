@@ -67,16 +67,6 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 document.addEventListener("DOMContentLoaded", function () {
-  // 添加测试模式 - 直接显示原始链接区域进行测试
-  const testMode = false; // 设置为 true 来启用测试模式
-  
-  if (testMode) {
-    setTimeout(() => {
-      console.log('测试模式：强制显示原始链接区域');
-      forceShowRawLinks();
-    }, 1000);
-  }
-  
   document
     .getElementById("submit")
     .addEventListener("click", function (e) {
@@ -105,8 +95,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const simulateSuccess = false; // 设置为 true 来使用模拟数据
       
       if (simulateSuccess) {
-        console.log('使用模拟数据进行测试');
-        
+
         // 模拟成功的API响应
         const mockData = {
           code: 0,
@@ -139,7 +128,7 @@ document.addEventListener("DOMContentLoaded", function () {
           return response.json();
         })
         .then((data) => {
-          console.log('✅ zjcdn API响应:', data);
+
           if (data.code === 0) {
             handleApiResponse(data);
           } else {
@@ -171,7 +160,7 @@ document.addEventListener("DOMContentLoaded", function () {
               return response.json();
             })
             .then((data) => {
-              console.log('✅ workflow API响应:', data);
+
               handleApiResponse(data);
             })
             .catch((fallbackError) => {
@@ -203,9 +192,7 @@ function handleApiResponse(data) {
   
   if (loadingDom) loadingDom.hidden = true;
   if (submitText) submitText.textContent = "解析";
-  
-  console.log('API Response:', data);
-  
+
   if (data.code === 0 && data.data) {
     const debugMode = !!data.data.debugMode;
     let allUrls = [];
@@ -236,9 +223,7 @@ function handleApiResponse(data) {
         type: detectLinkType(url)
       }));
     }
-    
-    console.log('All URLs:', allUrls);
-    
+
     if (allUrls.length > 0) {
       // 对于图片集，即使在非 debug 模式下也要显示所有图片
       // 只对纯视频链接进行过滤（保留第一个）
@@ -269,7 +254,7 @@ function handleApiResponse(data) {
         rawLinksSection.hidden = false;
         // 确保样式正确应用
         rawLinksSection.style.display = 'block';
-        console.log('Raw links section shown');
+
       } else {
         console.error('Raw links section not found!');
       }
@@ -284,7 +269,7 @@ function handleApiResponse(data) {
         document.getElementById("mediaPreview").scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
       if (!debugMode) {
-        console.log('单链接模式（非debug），如需查看所有候选：添加 ?debug=1 或设置环境变量 DEBUG_VIDEO_URLS=1');
+
       }
     } else {
       console.error('No URLs found in response');
@@ -338,8 +323,7 @@ function generateLinksListWithTypes(urlsWithType) {
       verifyLinkType(url, index);
     }
   });
-  
-  console.log('Links with types populated successfully');
+
 }
 
 // 生成分开的链接列表（保留原函数作为备用）
@@ -383,8 +367,7 @@ function generateLinksList(urls) {
     // 异步验证文件类型
     verifyLinkType(url, index);
   });
-  
-  console.log('Links populated successfully');
+
 }
 
 // 改进的链接类型检测函数
@@ -465,8 +448,7 @@ async function verifyLinkType(url, index) {
     }
   } catch (error) {
     // 如果HEAD请求失败，尝试其他方法
-    console.log(`无法验证链接 ${index + 1} 的类型:`, error);
-    
+
     // 可以尝试通过创建Image对象来检测图片
     if (!url.includes('.mp4') && !url.includes('video')) {
       const img = new Image();
@@ -494,15 +476,13 @@ function updateLinkTypeBadge(index, actualType) {
   
   // 更新文本内容
   badge.textContent = `${isVideo ? '🎬 视频' : '📸 图片'} ${index + 1}`;
-  
-  console.log(`链接 ${index + 1} 类型已更新为: ${actualType}`);
+
 }
 
 // 复制单个链接到剪贴板
 function copySingleLink(url) {
   navigator.clipboard.writeText(url).then(() => {
     showToast('📋 链接已复制', 'success');
-    console.log('Link copied:', url);
   }).catch(err => {
     // 备用复制方法
     const tempInput = document.createElement('input');
@@ -512,11 +492,8 @@ function copySingleLink(url) {
     document.execCommand('copy');
     document.body.removeChild(tempInput);
     showToast('📋 链接已复制', 'success');
-    console.log('Link copied (fallback):', url);
   });
 }
-
-
 
 // 直接下载函数 - 视频文件强制使用代理下载
 function downloadMedia(url, index) {
@@ -561,14 +538,14 @@ function downloadMedia(url, index) {
 
     // 视频文件直接使用代理下载，避免 403 错误
     if (isVideoFile) {
-      console.log('检测到视频文件，直接使用代理下载:', fileName);
+
       showToast('🔄 视频文件使用服务器代理下载', 'info');
       proxyDownload(url, fileName);
       return;
     }
 
     // 图片文件尝试直接下载
-    console.log('检测到图片文件，尝试直接下载:', fileName);
+
     showToast('📥 开始下载图片...', 'info');
 
     // 使用 fetch 下载文件
@@ -633,8 +610,7 @@ function downloadMedia(url, index) {
 function proxyDownload(url, fileName) {
   try {
     // 使用服务器代理下载
-    console.log('使用服务器代理下载:', fileName);
-    
+
     // 构建代理下载URL
     const proxyUrl = `/proxy-download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(fileName)}`;
     
@@ -753,7 +729,7 @@ function copyToClipboard() {
     navigator.clipboard.writeText(textToCopy)
       .then(function () {
         showToast('📋 所有链接已复制', 'success');
-        console.log('Links copied to clipboard');
+
       })
       .catch(function (error) {
         fallbackCopyTextToClipboard(textToCopy);
@@ -766,7 +742,7 @@ function copyToClipboard() {
 function fallbackCopyTextToClipboard(text) {
   copyTextToClipboard(text).then(function () {
     showToast('📋 所有链接已复制', 'success');
-    console.log('Links copied to clipboard (fallback)');
+
   })
   .catch(function (error) {
     showToast('❌ 复制失败，请手动选择文本复制', 'error');
@@ -1356,8 +1332,6 @@ function toggleRawLinks() {
   const toggleText = document.getElementById('rawLinksToggleText');
   const copyButton = document.getElementById('autocopy');
   
-  console.log('Toggle raw links clicked, content:', content); // 调试日志
-  
   if (!content || !toggleText) {
     console.error('Raw links elements not found');
     return;
@@ -1369,55 +1343,14 @@ function toggleRawLinks() {
     toggleText.textContent = '收起';
     // 展开时显示一键复制按钮
     if (copyButton) copyButton.hidden = false;
-    console.log('Raw links expanded'); // 调试日志
   } else {
     content.style.display = 'none';
     content.classList.remove('expanded');
     toggleText.textContent = '展开';
     // 收起时隐藏一键复制按钮
     if (copyButton) copyButton.hidden = true;
-    console.log('Raw links collapsed'); // 调试日志
   }
 }
-
-// 调试函数 - 强制显示原始链接
-function forceShowRawLinks() {
-  const rawLinksSection = document.getElementById("rawLinks");
-  const resultDom = document.getElementById("result");
-  
-  if (rawLinksSection) {
-    rawLinksSection.hidden = false;
-    rawLinksSection.style.display = 'block';
-    console.log('Force showing raw links section');
-  }
-  
-  if (resultDom) {
-    resultDom.value = "测试链接1\n测试链接2\n测试链接3";
-    console.log('Test links populated');
-  }
-  
-  // 生成测试链接列表
-  const testUrls = [
-    { url: "https://example.com/video1.mp4", type: "video" },
-    { url: "https://example.com/image1.jpg", type: "image" },
-    { url: "https://example.com/video2.mp4", type: "video" }
-  ];
-  generateLinksListWithTypes(testUrls);
-  
-  // 展开链接内容
-  const rawLinksContent = document.getElementById('rawLinksContent');
-  const rawLinksToggleText = document.getElementById('rawLinksToggleText');
-  if (rawLinksContent) {
-    rawLinksContent.style.display = 'block';
-    rawLinksContent.classList.add('expanded');
-  }
-  if (rawLinksToggleText) {
-    rawLinksToggleText.textContent = '收起';
-  }
-}
-
-// 在控制台中可以调用: forceShowRawLinks()
-console.log('调试提示: 在控制台中输入 forceShowRawLinks() 来强制显示原始链接部分');
 
 // 移动端全屏预览功能
 function enableMobileFullscreen() {
@@ -1508,3 +1441,319 @@ document.addEventListener('keydown', function(event) {
     }
   }
 });
+
+// Cookie Update Functionality
+class CookieManager {
+  constructor() {
+    this.modal = document.getElementById('cookieModal');
+    this.updateBtn = document.getElementById('cookie-update-btn');
+    this.closeBtn = document.querySelector('.cookie-modal-close');
+    this.cancelBtn = document.getElementById('cookie-cancel-btn');
+    this.saveBtn = document.getElementById('cookie-save-btn');
+    this.configBtn = document.getElementById('vercel-config-btn');
+    this.textarea = document.getElementById('cookie-textarea');
+    this.status = document.getElementById('cookie-status');
+    this.vercelCheckbox = document.getElementById('update-vercel-env');
+    this.vercelStatus = document.getElementById('vercel-config-status');
+    
+    this.vercelConfig = null;
+    
+    this.init();
+  }
+  
+  init() {
+    // 绑定事件
+    if (this.updateBtn) {
+      this.updateBtn.addEventListener('click', () => this.openModal());
+    }
+    if (this.closeBtn) {
+      this.closeBtn.addEventListener('click', () => this.closeModal());
+    }
+    if (this.cancelBtn) {
+      this.cancelBtn.addEventListener('click', () => this.closeModal());
+    }
+    if (this.saveBtn) {
+      this.saveBtn.addEventListener('click', () => this.saveCookie());
+    }
+    if (this.configBtn) {
+      this.configBtn.addEventListener('click', () => this.showVercelConfig());
+    }
+    
+    // 点击模态框背景关闭
+    if (this.modal) {
+      this.modal.addEventListener('click', (e) => {
+        if (e.target === this.modal) {
+          this.closeModal();
+        }
+      });
+    }
+    
+    // ESC键关闭模态框
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.modal && this.modal.classList.contains('show')) {
+        this.closeModal();
+      }
+    });
+    
+    // 文本框自动调整高度
+    if (this.textarea) {
+      this.textarea.addEventListener('input', () => {
+        this.autoResizeTextarea();
+      });
+    }
+    
+    // 检查框状态变化
+    if (this.vercelCheckbox) {
+      this.vercelCheckbox.addEventListener('change', () => {
+        if (this.vercelCheckbox.checked && !this.vercelConfig?.config?.isConfigured) {
+          this.loadVercelConfig();
+        }
+      });
+    }
+  }
+  
+  
+  async openModal() {
+    if (this.modal) {
+      // 使用内联样式强制显示
+      this.modal.style.display = 'flex';
+      this.modal.style.alignItems = 'center';
+      this.modal.style.justifyContent = 'center';
+      this.modal.classList.add('show');
+      if (this.textarea) {
+        this.textarea.focus();
+      }
+      this.hideStatus();
+      
+      // 加载Vercel配置状态
+      await this.loadVercelConfig();
+    }
+  }
+  
+  closeModal() {
+    if (this.modal) {
+      this.modal.style.display = 'none';
+      this.modal.classList.remove('show');
+      this.hideStatus();
+      this.hideVercelStatus();
+    }
+  }
+  
+  async loadVercelConfig() {
+    try {
+      const response = await fetch('/api/vercel-config');
+      if (response.ok) {
+        this.vercelConfig = await response.json();
+        this.updateVercelStatus();
+      }
+    } catch (error) {
+      console.error('获取Vercel配置失败:', error);
+    }
+  }
+  
+  updateVercelStatus() {
+    if (!this.vercelStatus || !this.vercelConfig) return;
+    
+    const { config } = this.vercelConfig;
+    
+    // 如果Vercel功能不可用
+    if (config.available === false) {
+      this.vercelStatus.innerHTML = `
+        <div class="text-info small">
+          ℹ️ Vercel自动同步为可选功能，基础Cookie更新功能正常可用
+        </div>
+      `;
+      this.vercelCheckbox.disabled = true;
+      this.vercelCheckbox.checked = false;
+      if (this.configBtn) this.configBtn.style.display = 'none';
+      return;
+    }
+    
+    // 如果Vercel功能可用且已配置
+    if (config.isConfigured) {
+      this.vercelStatus.innerHTML = `
+        <div class="text-success small">
+          ✅ Vercel配置已完成，支持自动更新环境变量
+        </div>
+      `;
+      this.vercelCheckbox.disabled = false;
+      if (this.configBtn) this.configBtn.style.display = 'none';
+    } else {
+      // Vercel功能可用但未配置
+      const missing = [];
+      if (!config.hasToken) missing.push('VERCEL_TOKEN');
+      if (!config.hasProjectId) missing.push('VERCEL_PROJECT_ID');
+      
+      this.vercelStatus.innerHTML = `
+        <div class="text-warning small">
+          ⚠️ 缺少配置: ${missing.join(', ')}
+          <button class="btn btn-link btn-sm p-0 ms-1" onclick="cookieManager.showVercelConfig()">
+            查看配置说明
+          </button>
+        </div>
+      `;
+      this.vercelCheckbox.disabled = true;
+      this.vercelCheckbox.checked = false;
+      if (this.configBtn) this.configBtn.style.display = 'inline-block';
+    }
+  }
+  
+  showVercelConfig() {
+    if (!this.vercelConfig) return;
+    
+    const { instructions, config } = this.vercelConfig;
+    
+    if (config.available === false) {
+      const configInfo = `
+Vercel自动同步功能（可选）
+
+当前状态：功能未启用
+这是正常的！基础Cookie更新功能完全可用。
+
+如果你需要启用高级的Vercel环境变量自动同步功能：
+
+1. 在服务器环境中安装axios包
+2. 确保vercel-env-manager.js文件存在
+3. 配置以下环境变量：
+
+VERCEL_TOKEN=${instructions.vercelToken}
+VERCEL_PROJECT_ID=${instructions.projectId}
+${instructions.teamId ? 'VERCEL_TEAM_ID=' + instructions.teamId : ''}
+
+配置后重启应用即可使用自动同步功能。
+
+💡 提示：即使不配置这些，Cookie更新功能仍然完全正常！
+      `;
+      alert(configInfo);
+      return;
+    }
+    
+    const configInfo = `
+Vercel环境变量配置说明：
+
+1. VERCEL_TOKEN:
+   ${instructions.vercelToken}
+   
+2. VERCEL_PROJECT_ID:
+   ${instructions.projectId}
+   
+3. VERCEL_TEAM_ID (可选):
+   ${instructions.teamId}
+
+配置后重新启动应用即可使用自动更新功能。
+    `;
+    
+    alert(configInfo);
+  }
+  
+  autoResizeTextarea() {
+    if (this.textarea) {
+      this.textarea.style.height = 'auto';
+      const minHeight = 120;
+      const maxHeight = 300;
+      const scrollHeight = this.textarea.scrollHeight;
+      const newHeight = Math.max(minHeight, Math.min(scrollHeight, maxHeight));
+      this.textarea.style.height = newHeight + 'px';
+    }
+  }
+  
+  async saveCookie() {
+    const cookieValue = this.textarea?.value?.trim();
+    const updateVercel = this.vercelCheckbox?.checked || false;
+    
+    if (!cookieValue) {
+      this.showStatus('请输入cookie内容', 'error');
+      return;
+    }
+    
+    // 智能验证cookie格式
+    let isValidFormat = false;
+    
+    // 检查是否是完整的sid_guard cookie格式
+    if (cookieValue.startsWith('sid_guard=') && cookieValue.includes('%7C')) {
+      isValidFormat = true;
+    }
+    // 检查是否只是sid_guard的值（包含%7C分隔符）
+    else if (cookieValue.includes('%7C') && !cookieValue.includes('=')) {
+      isValidFormat = true;
+    }
+    // 检查是否包含sid_guard参数
+    else if (cookieValue.includes('sid_guard=')) {
+      isValidFormat = true;
+    }
+    
+    if (!isValidFormat) {
+      this.showStatus('Cookie格式无效。请输入完整cookie或sid_guard值', 'error');
+      return;
+    }
+    
+    const statusMessage = updateVercel ? '正在保存cookie并更新Vercel...' : '正在保存cookie...';
+    this.showStatus(statusMessage, 'info');
+    this.saveBtn.disabled = true;
+    
+    try {
+      const response = await fetch('/api/update-cookie', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          cookie: cookieValue,
+          updateVercel: updateVercel
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (response.ok && result.success) {
+        this.showStatus(result.message, 'success');
+        
+        // 如果有Vercel更新结果，显示额外信息
+        if (result.vercelUpdateResult) {
+          setTimeout(() => {
+            this.showStatus(result.message + '\n💡 记得在Vercel重新部署以应用更改', 'success');
+          }, 1000);
+        }
+        
+        setTimeout(() => {
+          this.closeModal();
+        }, updateVercel ? 3000 : 2000);
+      } else {
+        this.showStatus(result.message || 'Cookie更新失败', 'error');
+      }
+    } catch (error) {
+      console.error('Cookie更新错误:', error);
+      this.showStatus('网络错误，请稍后重试', 'error');
+    } finally {
+      this.saveBtn.disabled = false;
+    }
+  }
+  
+  showStatus(message, type) {
+    if (this.status) {
+      this.status.textContent = message;
+      this.status.className = `cookie-status ${type}`;
+    }
+  }
+  
+  hideStatus() {
+    if (this.status) {
+      this.status.className = 'cookie-status';
+    }
+  }
+  
+  hideVercelStatus() {
+    if (this.vercelStatus) {
+      this.vercelStatus.innerHTML = '';
+    }
+  }
+}
+
+// 全局变量以供HTML中的onclick调用
+let cookieManager;
+
+// 初始化Cookie管理器
+document.addEventListener('DOMContentLoaded', function() {
+  cookieManager = new CookieManager();
+});
+
