@@ -17,6 +17,11 @@
       🌙
     </button>
     
+    <!-- Cookie Update Button -->
+    <button class="cookie-update-btn" id="cookie-update-btn" aria-label="更新Cookie" title="更新Cookie">
+      🍪
+    </button>
+    
     <div class="container mt-3">
       <div class="row justify-content-center">
         <div class="col-12 col-md-8 col-lg-6">
@@ -124,6 +129,67 @@
       <span class="lightbox-nav lightbox-prev">❮</span>
       <span class="lightbox-nav lightbox-next">❯</span>
       <img id="lightbox-img" src="" alt="">
+    </div>
+    
+    <!-- Cookie Update Modal -->
+    <div id="cookieModal" class="cookie-modal" style="display: none;">
+      <div class="cookie-modal-dialog">
+        <div class="cookie-modal-header">
+          <h3 class="cookie-modal-title">🍪 更新Cookie</h3>
+          <button type="button" class="cookie-modal-close" aria-label="关闭">&times;</button>
+        </div>
+        <div class="cookie-modal-body">
+          <p class="text-muted mb-3">
+            当出现"Cookie已失效"错误时，需要更新Cookie。您可以输入完整的cookie或只输入sid_guard的值。
+          </p>
+          
+          <div class="mb-3">
+            <label for="cookie-textarea" class="form-label">Cookie值:</label>
+            <textarea
+              id="cookie-textarea"
+              class="cookie-textarea"
+              rows="4"
+              placeholder="可以输入以下任一格式：
+
+1. 完整cookie：sid_guard=xxxxxx...;
+2. 只输入sid_guard值：xxxxxx%7Cxxxxxxxx%7Cxxxxxxx%7CDate
+
+系统会自动识别并处理"
+            ></textarea>
+            <div class="form-text">
+              <small>
+                <strong>获取方法：</strong><br>
+                1. 打开浏览器访问 douyin.com<br>
+                2. 按F12打开开发者工具<br>
+                3. 在Network标签页刷新页面<br>
+                4. 找到任意请求，复制Request Headers中的Cookie值或sid_guard部分
+              </small>
+            </div>
+            
+            <!-- Vercel环境变量更新选项 -->
+            <div class="vercel-options mt-3">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="update-vercel-env" />
+                <label class="form-check-label" for="update-vercel-env">
+                  同时更新Vercel环境变量 <span class="text-muted">(需要配置)</span>
+                </label>
+              </div>
+              <div id="vercel-config-status" class="vercel-config-status mt-2"></div>
+            </div>
+          </div>
+          
+          <div id="cookie-status" class="cookie-status"></div>
+        </div>
+        <div class="cookie-modal-footer">
+          <button type="button" class="cookie-btn cookie-btn-secondary" id="cookie-cancel-btn">取消</button>
+          <button type="button" class="cookie-btn cookie-btn-info" id="vercel-config-btn" style="display: none;">
+            查看配置
+          </button>
+          <button type="button" class="cookie-btn cookie-btn-primary" id="cookie-save-btn">
+            更新Cookie
+          </button>
+        </div>
+      </div>
     </div>
     
     <!-- JavaScript -->

@@ -24,8 +24,18 @@
 🌙 **深色模式** - 内置明暗主题切换，护眼体验  
 ⚡ **实时预览** - 媒体内容可视化预览，支持网格和列表视图  
 🔄 **稳定下载** - 视频文件使用代理下载，提高下载成功率  
-� **快速下载** - 图片直接下载，视频代理下载，优化下载体验  
+🚀 **快速下载** - 图片直接下载，视频代理下载，优化下载体验  
 📋 **便捷复制** - 单个或批量复制下载链接  
+🍪 **智能Cookie管理** - 网页界面一键更新Cookie，支持多种格式自动识别  
+🔧 **环境变量支持** - 支持本地开发和生产环境配置  
+☁️ **Vercel一键部署** - 开箱即用的云端部署方案  
+
+### 🎉 最新功能：Cookie智能更新
+
+- ✅ **网页界面更新** - 点击🍪按钮即可更新Cookie  
+- ✅ **格式智能识别** - 自动识别完整Cookie或sid_guard值  
+- ✅ **实时生效** - 当前会话立即使用新Cookie  
+- 🚀 **Vercel自动同步** - 可选功能，自动更新云端环境变量  
 
 ## 🎨 界面预览
 
@@ -62,31 +72,249 @@
     </a>
 </p>
 
-## 🚀 快速开始
+## 🚀 部署指南
 
-### 环境要求
+### 📱 本地部署
 
+#### 环境要求
 - Node.js >= 18.0.0
 - npm 或 yarn 包管理器
 
-### 本地运行
-
-> **第一步**: Fork 本仓库到你的 GitHub 账户
+#### 快速开始
 
 ```bash
-# 克隆你 Fork 的项目（替换 YOUR_USERNAME 为你的用户名）
-git clone https://github.com/YOUR_USERNAME/dydownload.git
+# 1. 克隆项目
+git clone https://github.com/JIaLeChye/dydownload.git
 cd dydownload
 
-
-# 安装依赖
+# 2. 安装依赖
 npm install
 
+# 3. 配置环境变量
+cp .env.example .env.local
+```
+
+#### 配置抖音Cookie（必需）
+
+**方法一：获取完整Cookie**
+1. 浏览器访问 [douyin.com](https://douyin.com)
+2. 按 `F12` 打开开发者工具
+3. 切换到 `Network` 标签页，刷新页面
+4. 找到任意请求，复制 `Request Headers` 中的完整 `Cookie` 值
+
+**方法二：只获取sid_guard值**
+1. 在上述Cookie中找到 `sid_guard=` 部分
+2. 复制等号后的值（如：`a1b2c3d4...xyz`）
+
+编辑 `.env.local` 文件：
+```bash
+# 完整Cookie格式（推荐）
+DOUYIN_COOKIE=sid_guard=你的完整cookie值; sessionid=另一个值;
+
+# 或只配置sid_guard值（系统会自动包装）
+DOUYIN_COOKIE=sid_guard=a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6%7C1756624538%7C5184000%7CThu%2C+30-Oct-2025+07%3A15%3A38+GMT;
+```
+
+#### 启动服务
+
+```bash
 # 启动开发服务器
 npm run dev
 ```
 
 访问 http://localhost:3000 开始使用
+
+#### 💡 本地部署注意事项
+- ✅ Cookie配置在 `.env.local` 文件中，重启服务器后持久有效
+- ✅ 网页界面更新Cookie仅在当前会话有效，重启后恢复配置文件中的值
+- ✅ 建议在 `.env.local` 中配置稳定的长期Cookie
+- 🔄 Cookie过期时可先用网页更新应急，再更新配置文件
+
+---
+
+### ☁️ Vercel云端部署
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/JIaLeChye/dydownload)
+
+#### 基础部署（5分钟完成）
+
+**第1步：连接仓库**
+1. 访问 [Vercel Dashboard](https://vercel.com/dashboard)
+2. 点击 "New Project"
+3. 选择此GitHub仓库
+4. 点击 "Deploy"
+
+**第2步：配置环境变量**
+在Vercel项目的 `Settings` > `Environment Variables` 中添加：
+
+| 变量名 | 值 | 环境 | 说明 |
+|--------|----|----|------|
+| `DOUYIN_COOKIE` | `sid_guard=你的cookie值;` | Production, Preview | 必需 |
+
+**第3步：重新部署**
+- 点击 `Deployments` > `Redeploy` 使环境变量生效
+
+#### 高级功能：Cookie自动同步（可选）
+
+> **⚠️ 重要说明**：由于安全限制，Vercel的Token和Project ID无法自动获取，需要用户手动配置。这是正常的安全机制，确保您的账户安全。
+
+**这个功能的作用**：
+- 🎯 **问题**：通常情况下，网页更新Cookie只在当前会话有效，Vercel重启后会恢复到环境变量中的旧值
+- 💡 **解决**：启用此功能后，网页更新Cookie时会自动同步到Vercel环境变量，实现真正的持久化
+
+**配置步骤**（仅在需要自动同步功能时）：
+
+**第1步：获取Vercel Token**
+1. 访问 [Vercel Dashboard](https://vercel.com/account/tokens)
+2. 点击 "Create Token"
+3. 输入Token名称（如：`dydownload-cookie-sync`）
+4. 复制生成的Token（格式：`vercel_xxxxxxxxxx`）
+
+**第2步：获取Project ID**
+1. 在Vercel项目页面，点击 "Settings"
+2. 在 "General" 部分找到 "Project ID"
+3. 复制Project ID（格式：`prj_xxxxxxxxxx`）
+
+**第3步：添加环境变量**
+
+| 变量名 | 获取方法 | 说明 |
+|--------|----------|------|
+| `VERCEL_TOKEN` | 步骤1获取的Token | ⚠️ 敏感信息，请妥善保管 |
+| `VERCEL_PROJECT_ID` | 步骤2获取的Project ID | 项目标识符 |
+| `VERCEL_TEAM_ID` | 团队Settings > General > Team ID | 仅团队项目需要 |
+
+**第4步：重新部署项目**
+
+**功能优势**：
+- 🔄 网页界面更新Cookie后自动同步到Vercel环境变量
+- 🚀 无需手动登录Dashboard更新环境变量
+- ⚡ 支持一键Cookie更新+自动部署
+- 🛡️ 安全的API调用，所有操作通过官方API进行
+
+#### 💡 Vercel部署重点提醒
+
+**✅ 推荐使用方式（90%的用户）**：
+- 只配置 `DOUYIN_COOKIE` 环境变量
+- Cookie失效时，在Vercel Dashboard手动更新环境变量
+- 简单、安全、够用
+
+**🚀 高级使用方式（技术用户）**：
+- 额外配置Vercel API相关环境变量
+- 支持网页一键更新并自动同步到云端
+- 适合频繁更新Cookie的重度用户
+
+**🔐 安全考虑**：
+- Vercel Token具有高级权限，请妥善保管
+- 建议定期更换Token保证账户安全
+- 所有API调用都通过HTTPS加密传输
+
+---
+
+## 📖 使用指南
+
+### 基础操作
+
+1. **📎 粘贴链接** - 在输入框粘贴抖音分享链接
+2. **🔍 自动解析** - 点击"解析"按钮，系统自动识别内容
+3. **👀 预览内容** - 在预览区域查看视频/图片
+4. **💾 下载文件** - 系统自动选择合适的下载方式
+
+### 🍪 Cookie管理功能
+
+#### 更新Cookie
+1. 点击页面右上角的 🍪 按钮
+2. 输入新的Cookie值（支持多种格式）：
+   - 完整Cookie：`sid_guard=xxx; sessionid=yyy;`
+   - 仅sid_guard值：`a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6%7C1756624538...`
+3. 可选择是否同步到Vercel环境变量
+4. 点击"更新Cookie"完成
+
+#### Cookie格式说明
+- ✅ **完整格式**：`sid_guard=值; sessionid=值; 其他=值;`
+- ✅ **简化格式**：`sid_guard=值;`
+- ✅ **纯值格式**：`a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6%7C1756624538...`
+
+系统会自动识别并处理不同格式的Cookie。
+
+---
+
+## 🛠️ 故障排除
+
+### 常见问题
+
+#### 1. "链接已过期"错误
+**原因**：Cookie失效或链接格式不正确
+**解决方案**：
+- 更新Cookie值（使用网页Cookie更新功能）
+- 确保使用最新的抖音分享链接
+- 检查链接是否完整（包含https://）
+
+#### 2. "服务器错误"或"解析失败" 
+**原因**：Cookie无效或网络问题
+**解决方案**：
+- 检查 `.env.local` 中的Cookie配置是否正确
+- 重新获取Cookie并更新配置
+- 重启本地服务器
+
+#### 3. 本地环境Cookie未生效
+**原因**：环境变量文件路径或格式问题
+**解决方案**：
+```bash
+# 检查文件是否存在
+ls .env.local
+
+# 检查文件内容格式
+cat .env.local
+
+# 确保格式正确（无多余空格）
+DOUYIN_COOKIE=sid_guard=你的cookie值;
+```
+
+#### 4. Vercel部署后功能异常
+**原因**：环境变量未配置或格式错误
+**解决方案**：
+- 在Vercel Dashboard检查环境变量是否存在
+- 确认变量名为 `DOUYIN_COOKIE`（区分大小写）
+- 重新部署项目使环境变量生效
+
+#### 5. Cookie自动同步失败
+**原因**：Vercel API配置不完整
+**解决方案**：
+- 检查 `VERCEL_TOKEN` 是否有效
+- 确认 `VERCEL_PROJECT_ID` 是否正确
+- 查看浏览器控制台错误信息
+
+#### 6. 为什么不能自动获取Vercel凭证？
+**问题**：能否自动获取Vercel Token和Project ID？
+**答案**：**不可以，也不应该！**
+
+**技术原因**：
+- Vercel Token是**个人访问令牌**，具有账户级别权限
+- 自动获取意味着需要存储您的Vercel用户名/密码
+- 这会带来**严重的安全风险**
+
+**安全考虑**：
+- ✅ **推荐做法**：手动配置Token（当前方案）
+  - 您完全控制权限范围和有效期
+  - 可以随时撤销或重新生成
+  - 符合安全最佳实践
+- ❌ **不安全做法**：自动获取凭证
+  - 需要存储密码或长期凭证
+  - 增加账户被盗风险
+  - 违反零信任安全原则
+
+**替代方案**：
+- 使用Vercel CLI的 `vercel env` 命令批量管理
+- 编写脚本调用Vercel API进行自动化（但仍需手动配置Token）
+
+### 🔧 调试技巧
+
+1. **本地调试**：查看终端控制台输出
+2. **网络问题**：检查浏览器Network标签页
+3. **环境变量**：使用 `console.log(process.env.DOUYIN_COOKIE)` 检查
+4. **Vercel日志**：在Vercel Dashboard的Functions标签页查看运行日志
+
+---
 
 ### 使用方法
 
@@ -97,54 +325,26 @@ npm run dev
 
 ## 🛠️ 核心技术特性
 
-### 🔄 下载系统优化 (2025.8 最新)
+### 🔄 智能下载系统
+- **自动文件检测**：支持 `.mp4`, `.mov`, `.avi`, `.webm` 等视频格式
+- **分类下载策略**：
+  - 📹 **视频文件** → 服务器代理下载（确保完整性）
+  - 🖼️ **图片文件** → 直接下载（提升速度）
+- **用户体验**：统一界面，自动选择最优下载方式
 
-**自动文件类型检测**
-- 支持格式：`.mp4`, `.mov`, `.avi`, `.mkv`, `.webm`, `.flv`, `.m4v`
-- 系统自动识别文件类型，选择合适的下载方式
+### 🎨 现代化前端
+- **响应式设计**：完美适配移动端和桌面端
+- **深色模式**：内置主题切换，护眼体验  
+- **实时预览**：网格/列表视图，支持全屏预览
+- **渐进式Web应用**：接近原生应用的使用体验
 
-**分类下载策略**
-- **视频文件** → 使用服务器代理下载
-  - 绕过抖音防盗链保护，避免403错误
-  - 确保视频文件完整性，防止文件损坏
-  - 支持大文件下载，提升稳定性
-- **图片文件** → 直接下载
-  - 保持下载速度，即点即下
-  - 减少服务器负载，提升响应速度
-
-**技术实现**
-```javascript
-// 下载方式选择逻辑
-const isVideoFile = url.includes('.mp4') || 
-                   url.includes('zjcdn.com') || 
-                   url.includes('video') ||
-                   extension === '.mp4';
-
-if (isVideoFile) {
-  // 视频文件 → 代理下载
-  proxyDownload(url, fileName);
-} else {
-  // 图片文件 → 直接下载  
-  directDownload(url, fileName);
-}
-```
-
-**用户体验改进**
-- 统一下载按钮界面
-- 自动显示下载方式选择（代理/直接）
-- 实时反馈下载状态和进度
-
-### 前端技术栈
-- **Bootstrap 5** - 现代响应式UI框架
-- **原生JavaScript** - 高性能客户端逻辑
-- **CSS3** - 深色模式、动画效果、移动端适配
-- **Progressive Web App** - 接近原生应用体验
-
-### 移动端优化
-- **🔄 全屏预览模式** - 移动端沉浸式体验
-- **👆 触控优化** - 手势交互、按钮大小适配
-- **📐 响应式布局** - 自适应不同屏幕尺寸
-- **⚡ 性能优化** - 懒加载、图片压缩
+### 🛡️ 安全与配置
+- **环境变量管理**：敏感数据通过环境变量保护
+- **多层Cookie管理**：
+  - 配置文件持久化存储
+  - 网页界面临时更新
+  - Vercel环境变量自动同步
+- **智能降级**：核心功能在任何配置下都能工作
 
 ### 用户体验
 - **🎨 双主题设计** - 明亮/深色模式切换
@@ -171,208 +371,67 @@ FetchError: invalid json response body at https://www.douyin.com/aweme/v1/web/aw
 **解决方案**：
 1. 打开抖音网页版：https://www.douyin.com
 2. 按 `F12` 打开开发者工具
-3. 切换到 "Application" → "Storage" → "Cookies" → "https://www.douyin.com"
-4. 复制所有cookie值，特别关注以下关键cookie：
-   - `sid_guard` - 用户会话标识
-
-5. 替换 `bin/index.js` 第16行的 cookie 变量：
-
-```javascript
-// 更新这行，使用完整的cookie字符串
-'cookie': 'sid_guard=你的sid_guard值'
-```
-
-**完整示例**：
-```javascript
-// 第16行
-'cookie': 'sid_guard=新的值'
-```
-
-![Cookie获取示例](https://github.com/user-attachments/assets/a4c63bfc-5d4f-4e05-8e80-0706cdd323c6)
-
+---
 
 ## 📅 更新日志
 
-### 🎉 2025.1 版本
-- ✨ **全新界面设计** - 现代化响应式UI
-- 📱 **移动端全屏预览** - 沉浸式媒体体验  
-- 🌙 **深色模式支持** - 护眼主题切换
-- 🔄 **智能内容识别** - 自动区分视频/图片
-- 📥 **批量下载优化** - 支持分类下载
-- 💫 **动画效果增强** - 流畅交互体验
+### 🚀 v2025.8 - 环境变量优化与Cookie管理
+*发布日期: 2025年8月31日*
 
-### 🐛 2024.9.5
-- 🔧 修复 x_bogus 验证失败，转换为 a_bougs 参数
+**🍪 Cookie管理系统**
+- 新增网页界面Cookie更新功能
+- 支持多种Cookie格式自动识别
+- 实现Vercel环境变量自动同步（可选）
+- 智能Cookie存储分层：配置文件 + 临时更新 + 云端同步
 
-### ✨ 2024.1.4-1.5  
-- 🎯 支持用户主页分享链接批量下载
-- 📸 优化图片作品批量下载功能
+**🔧 环境变量优化**
+- 修复 `.env.local` 文件加载问题
+- 完善 `dotenv` 配置，支持本地开发环境
+- 添加环境变量示例文件 `.env.example`
+- 优化Vercel部署的环境变量配置流程
 
-## 🚀 部署方案
-
-### 🖥️ 本地开发
-
-> **重要**: 开发前请先 Fork 本仓库到你的 GitHub 账户
-
-1. **Fork 仓库**: 访问 [本项目](https://github.com/JIaLeChye/dydownload)，点击右上角 "Fork" 按钮
-2. **克隆你的 Fork**:
-
-```bash
-# 克隆你 Fork 的项目（替换 YOUR_USERNAME 为你的 GitHub 用户名）
-git clone https://github.com/YOUR_USERNAME/dydownload.git
-cd dydownload
-
-# 安装依赖
-npm install
-
-# 启动开发服务器
-npm run dev
-```
-
-3. **设置上游仓库**（用于同步原仓库更新）:
-
-```bash
-# 添加原仓库为上游
-git remote add upstream https://github.com/JIaLeChye/dydownload.git
-
-# 查看远程仓库配置
-git remote -v
-```
-
-访问 http://localhost:3000
-
-### ☁️ Vercel 部署
-
-> **重要**: 部署前请先 Fork 本仓库到你的 GitHub 账户
-
-1. **Fork 仓库**: 点击右上角 "Fork" 按钮，将仓库复制到你的账户
-2. **部署到 Vercel**: 使用你 Fork 后的仓库地址进行部署
-
-[![部署到 Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/JIaLeChye/dydownload)
-
-**或者手动部署**:
-1. 访问 [Vercel](https://vercel.com/new)
-2. 选择你 Fork 的 `dydownload` 仓库
-3. 点击 "Deploy" 开始部署
-
-> **注意**: Vercel 免费版有6秒超时限制，批量下载可能受影响
-
-### 🐳 Docker 部署
-
-```bash
-# 拉取镜像
-docker pull h55205l/douyin_no_watermark:latest
-
-# 启动容器
-docker run -p 3000:3000 -d h55205l/douyin_no_watermark:latest
-```
-
-### 🖥️ 服务器部署
-
-1. 下载对应平台的可执行文件
-2. 授权执行：`chmod +x oimi-tk-linux-x86`
-3. 运行：`./oimi-tk-linux-x86`
-
-**自定义端口**:
-```bash
-# 方式1: 环境变量
-echo "PORT=8080" > .env
-
-# 方式2: 命令行参数
-./oimi-tk-linux-x86 --port=8080
-```
-
-## 🔌 API 接口
-
-| 接口 | 方法 | 参数 | 响应 |
-|-----|------|-----|------|
-| `/douyin` | `POST` | `{ url: "抖音链接" }` | `{ code: 0, data: {video: [], img: [], msg: ''}}` |
-| `/workflow` | `POST` | `{ url: "抖音链接" }` | `{ code: 0, data: ['downloadUrl'] }` |
-
-### 响应示例
-
-```json
-{
-  "code": 0,
-  "data": {
-    "video": ["https://video-url-1.mp4"],
-    "img": ["https://image-url-1.jpg", "https://image-url-2.jpg"],
-    "msg": "解析成功"
-  }
-}
-```
-
-## 📝 更新日志
-
-### 🚀 v2025.8 - 下载系统优化
-*发布日期: 2025年8月10日*
-
-**🔧 核心修复**
-- 修复 `response.body.pipe is not a function` 错误
-- 解决 Node.js 22 native fetch API 兼容性问题
-- 修复三个下载端点的流处理错误
-
-**🔄 下载系统改进**
-- 实现文件类型自动检测（支持7种视频格式）
-- 视频文件自动使用服务器代理下载，避免403防盗链错误
-- 图片文件继续直接下载，保持速度优势
-- 优化下载策略，提升成功率
-
-**🎨 用户界面优化**
-- 统一下载按钮界面设计
-- 添加下载方式说明和提示信息
-- 更新测试页面，保持界面一致性
-
-**🧹 代码优化**
-- 清理32个测试和调试文件，精简代码结构
-- 移除未使用的依赖和功能模块
+**�️ 系统稳定性**
+- 修复 Node.js fetch API 兼容性问题
+- 实现智能文件类型检测和下载策略
 - 优化错误处理和用户反馈机制
+- 清理冗余代码，简化项目结构
 
-### 📊 v2025.1 - 现代化重构
-*发布日期: 2025年1月*
+### 🎉 v2025.1 - 现代化界面重构
+- ✨ 全新响应式设计，支持明暗主题
+- 📱 移动端全屏预览，沉浸式体验
+- 🔄 智能内容识别，批量下载优化
+- � 流畅动画效果，现代交互体验
 
-**🎨 界面现代化**
-- 全新响应式设计，支持明暗主题
-- 移动端优化，触控友好交互
-- Bootstrap 5 + 原生 JavaScript
-
-**📱 移动端适配**
-- 全屏预览模式
-- 手势操作优化
-- 自适应布局系统
-
-**🔧 功能增强**
-- 实时媒体预览
-- 智能链接识别
-- 改进下载机制
+---
 
 ## 🤝 贡献指南
 
 欢迎提交 Issue 和 Pull Request！
 
-1. Fork 本仓库
-2. 创建特性分支：`git checkout -b feature/AmazingFeature`
-3. 提交更改：`git commit -m 'Add some AmazingFeature'`
-4. 推送分支：`git push origin feature/AmazingFeature`
-5. 开启 Pull Request
+1. **Fork 本仓库**
+2. **创建特性分支**：`git checkout -b feature/AmazingFeature`
+3. **提交更改**：`git commit -m 'Add some AmazingFeature'`
+4. **推送分支**：`git push origin feature/AmazingFeature`
+5. **开启 Pull Request**
 
 ## 📄 开源协议
 
-本项目采用 [Creative Commons Attribution-NonCommercial 4.0](./LICENSE) 协议
+本项目采用 [ISC License](./LICENSE) 协议
 
 ## 🙏 致谢
 
 - **原作者**: [helson-lin](https://github.com/helson-lin) - [douyin_no_watermark](https://github.com/helson-lin/douyin_no_watermark)
-- **X-Bogus.js**: [Douyin_TikTok_Download_API](https://github.com/Evil0ctal/Douyin_TikTok_Download_API)
-- **视频下载修复**：[douyin-downloader](https://github.com/jiji262/douyin-downloader)
+- **X-Bogus算法**: [Evil0ctal](https://github.com/Evil0ctal) - [Douyin_TikTok_Download_API](https://github.com/Evil0ctal/Douyin_TikTok_Download_API)
+
 ---
 
 <div align="center">
 
-**⭐ 觉得有用的话，请给个 Star ⭐**
+**⭐ 如果这个项目对您有帮助，请给个 Star ⭐**
 
 Made with ❤️ by [JIaLeChye](https://github.com/JIaLeChye)
 
+[![GitHub stars](https://img.shields.io/github/stars/JIaLeChye/dydownload?style=social)](https://github.com/JIaLeChye/dydownload/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/JIaLeChye/dydownload?style=social)](https://github.com/JIaLeChye/dydownload/network)
+
 </div>
-
-
