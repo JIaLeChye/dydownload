@@ -1687,7 +1687,9 @@ Vercel环境变量配置说明：
       return;
     }
     
-    const statusMessage = updateVercel ? '正在保存cookie并更新Vercel...' : '正在保存cookie...';
+    const statusMessage = updateVercel ? 
+      '正在更新Cookie并备份到Vercel...' : 
+      '正在动态更新Cookie...';
     this.showStatus(statusMessage, 'info');
     this.saveBtn.disabled = true;
     
@@ -1706,18 +1708,28 @@ Vercel环境变量配置说明：
       const result = await response.json();
       
       if (response.ok && result.success) {
-        this.showStatus(result.message, 'success');
-        
-        // 如果有Vercel更新结果，显示额外信息
-        if (result.vercelUpdateResult) {
+        // 🎉 突出显示立即生效的特性
+        if (result.immediate && result.noRedeployNeeded) {
+          this.showStatus('🎉 Cookie已更新并立即生效！无需重新部署 🚀', 'success');
+          
+          // 显示额外的成功提示
           setTimeout(() => {
-            this.showStatus(result.message + '\n💡 记得在Vercel重新部署以应用更改', 'success');
-          }, 1000);
+            showToast('🚀 Cookie动态更新成功，立即可用！', 'success');
+          }, 800);
+        } else {
+          this.showStatus(result.message, 'success');
+        }
+        
+        // 如果有Vercel备份
+        if (result.vercelUpdateResult && updateVercel) {
+          setTimeout(() => {
+            this.showStatus('🎉 Cookie立即生效 + Vercel环境变量已备份', 'success');
+          }, 1200);
         }
         
         setTimeout(() => {
           this.closeModal();
-        }, updateVercel ? 3000 : 2000);
+        }, 2500);
       } else {
         this.showStatus(result.message || 'Cookie更新失败', 'error');
       }
