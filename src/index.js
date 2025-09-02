@@ -1,9 +1,29 @@
+//#!/usr/bin/env node
 
 const Scraper = require('..')
 const express = require('express')
 const path = require('path')
 const fs = require('fs')
+const { pipeline } = require('stream')
+const { promisify } = require('util')
 const { marked } = require('marked')
+
+const pipelineAsync = promisify(pipeline)
+
+// 工具函数：安全地隐藏敏感信息用于日志输出
+const maskSensitiveInfo = (str, type = 'cookie') => {
+    if (!str || typeof str !== 'string') return str;
+    
+    if (type === 'cookie') {
+        // 隐藏Cookie值，只显示前4位和后4位
+        if (str.length <= 8) return '****';
+        return str.substring(0, 4) + '****' + str.substring(str.length - 4);
+    }
+    
+    // 通用敏感信息隐藏
+    if (str.length <= 8) return '****';
+    return str.substring(0, 3) + '****' + str.substring(str.length - 3);
+};
 
 // 配置dotenv加载.env.local文件
 require('dotenv').config({ path: path.join(__dirname, '../.env.local') });
@@ -419,17 +439,21 @@ app.get('/proxy-download', async (req, res) => {
         
         if (contentLength) {
             res.setHeader('Content-Length', contentLength);
-
         }
 
-        // 修复: 使用 arrayBuffer 处理二进制内容
-        const arrayBuffer = await response.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
-        
-        res.write(buffer);
-        res.end();
+        // 改进: 使用 pipeline 确保正确的错误处理和资源清理
+        await pipelineAsync(response.body, res);
 
     } catch (error) {
+        // 忽略客户端提前断开连接的正常情况（如用户取消下载）
+        if (error.code === 'ERR_STREAM_PREMATURE_CLOSE' || 
+            error.message.includes('Premature close') ||
+            error.code === 'ECONNRESET' ||
+            error.code === 'EPIPE') {
+            // console.log('📡 客户端提前断开连接（正常情况，如取消下载）');
+            return;
+        }
+        
         console.error('❌ 代理下载错误:', error.message);
         if (!res.headersSent) {
             res.status(500).json({ error: '下载失败: ' + error.message });
@@ -449,16 +473,25 @@ app.get('/proxy-video', async (req, res) => {
 
         const fetch = require('node-fetch');
         
+        // 构建请求头，支持 Range 请求（拖拽进度条）
+        const headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': 'https://www.douyin.com/',
+            'Accept': '*/*',
+            'Accept-Encoding': 'identity',
+            'Connection': 'keep-alive'
+        };
+        
+        // 透传客户端的 Range 请求头（支持视频拖拽进度条）
+        if (req.headers.range) {
+            headers.Range = req.headers.range;
+            console.log('📡 透传 Range 请求:', req.headers.range);
+        }
+        
         // 直接获取文件内容
         const response = await fetch(url, {
             method: 'GET',
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Referer': 'https://www.douyin.com/',
-                'Accept': '*/*',
-                'Accept-Encoding': 'identity',
-                'Connection': 'keep-alive'
-            },
+            headers: headers,
             timeout: 60000
         });
         
@@ -470,28 +503,40 @@ app.get('/proxy-video', async (req, res) => {
         // 获取文件信息
         const contentType = response.headers.get('content-type') || 'video/mp4';
         const contentLength = response.headers.get('content-length');
-
-        if (contentLength) {
-
+        const acceptRanges = response.headers.get('accept-ranges');
+        const contentRange = response.headers.get('content-range');
+        
+        // 如果是 Range 请求，设置 206 状态码
+        if (response.status === 206) {
+            res.status(206);
         }
         
         // 设置视频流响应头（用于预览，不是下载）
         res.setHeader('Content-Type', contentType);
-        res.setHeader('Accept-Ranges', 'bytes');
+        res.setHeader('Accept-Ranges', acceptRanges || 'bytes');
         res.setHeader('Cache-Control', 'public, max-age=3600');
         
         if (contentLength) {
             res.setHeader('Content-Length', contentLength);
         }
-
-        // 修复: 使用 arrayBuffer 处理视频流
-        const arrayBuffer = await response.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
         
-        res.write(buffer);
-        res.end();
+        if (contentRange) {
+            res.setHeader('Content-Range', contentRange);
+        }
+
+        // 改进: 使用 pipeline 确保正确的错误处理和资源清理
+        await pipelineAsync(response.body, res);
 
     } catch (error) {
+        // 忽略客户端提前断开连接的正常情况（如拖拽进度条）
+        if (error.code === 'ERR_STREAM_PREMATURE_CLOSE' || 
+            error.message.includes('Premature close') ||
+            error.code === 'ECONNRESET' ||
+            error.code === 'EPIPE') {
+            // console.log('📡 客户端提前断开连接（正常情况，如拖拽进度条）');
+            return;
+        }
+        
         console.error('❌ 视频代理错误:', error.message);
         if (!res.headersSent) {
             res.status(500).json({ error: '视频加载失败: ' + error.message });
@@ -646,7 +691,7 @@ app.post('/api/update-cookie', async (req, res) => {
         // 🚀 动态更新scraper实例中的cookie - 立即生效！
         if (scraper && scraper.updateCookie) {
             scraper.updateCookie(finalCookie);
-            console.log('🍪 Scraper Cookie已动态更新，立即生效！');
+            console.log('🍪 Scraper Cookie已动态更新，立即生效！[Cookie: ' + maskSensitiveInfo(finalCookie) + ']');
         }
 
         let vercelUpdateResult = null;
@@ -688,7 +733,7 @@ app.post('/api/update-cookie', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Cookie更新错误:', error);
+        console.error('Cookie更新错误:', error.message || 'Unknown error');
         res.status(500).json({ success: false, message: '更新失败: ' + error.message });
     }
 });
