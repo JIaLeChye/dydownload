@@ -2,13 +2,21 @@
   "name": "oimi-tk",
   "version": "1.0.0",
   "description": "douyin no water video parser",
-  "bin": "src/index.js",
+  "type": "commonjs",
   "main": "bin/index.js",
+  "bin": {
+    "oimi-tk": "src/index.js"
+  },
   "scripts": {
-    "dev": "node ./src/index.js",
+    "start": "node src/index.js",
+    "dev": "node src/index.js",
     "pkg": "pkg ./ --debug=true",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "engines": {
+    "node": ">=18.17"
+  },
+
   "pkg": {
     "scripts": [
       "./src/index.js",
@@ -19,7 +27,9 @@
       "./runtime/**/**/*.js",
       "./README.md",
       "public/**/*",
-      "public/*"
+      "public/*",
+      "bin/a_bogus.js",
+      "bin/sign.js"
     ],
     "targets": [
       "node18-macos-arm64",

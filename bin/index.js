@@ -2,6 +2,22 @@ const fetch = require('node-fetch')
 const { sign } = require('./sign')
 const download = require('download')
 const getDeepProperty = require("@orange-opensource/get-deep-property");
+
+// 工具函数：安全地隐藏敏感信息用于日志输出
+const maskSensitiveInfo = (str, type = 'cookie') => {
+    if (!str || typeof str !== 'string') return str;
+    
+    if (type === 'cookie') {
+        // 隐藏Cookie值，只显示前4位和后4位
+        if (str.length <= 8) return '****';
+        return str.substring(0, 4) + '****' + str.substring(str.length - 4);
+    }
+    
+    // 通用敏感信息隐藏
+    if (str.length <= 8) return '****';
+    return str.substring(0, 3) + '****' + str.substring(str.length - 3);
+};
+
 class Scraper {
 
     constructor() {
@@ -30,7 +46,7 @@ class Scraper {
         // 更新douyinApiHeaders中的cookie
         this.douyinApiHeaders.cookie = newCookie.trim();
         
-        console.log('🍪 Cookie已动态更新，立即生效！');
+        console.log('🍪 Cookie已动态更新，立即生效！[Cookie: ' + maskSensitiveInfo(newCookie) + ']');
         return true;
     }
 
