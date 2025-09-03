@@ -1,4 +1,30 @@
 /* V 1.0.1.5 */
+// 处理命令行参数，与 sign.js 保持契约一致
+const allParams = process.argv.slice(2);
+
+// sign.js 用 b64() 编码传参，这里对应解码
+function b64decode(s = '') {
+  try {
+    return Buffer.from(String(s), 'base64').toString('utf8');
+  } catch (err) {
+    console.error('[a_bogus] base64 解码失败:', s, err.message);
+    return '';
+  }
+}
+
+// 参数1: query（必需，base64 编码）
+// 参数2: userAgent（可选，base64 编码）
+const queryParam = allParams[0] || '';
+const uaParam = allParams[1] || '';
+
+// 选项1: 纯 Chrome UA（最常见，推荐）
+// 对应: browser_name=Chrome, browser_version=109.0
+const defaultUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0';
+
+// 解码参数
+const dynamicParams = b64decode(queryParam);
+const dynamicUserAgent = uaParam ? b64decode(uaParam) : defaultUA;
+
 function getEnvs(proxyObjs) {
     for (let i = 0; i < proxyObjs.length; i++) {
         const handler = `{
@@ -26,7 +52,7 @@ window.all = {}
 XMLHttpRequest = function () {
     return 'XMLHttpRequest() { [native code] }'
 }
-navigator.userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+navigator.userAgent = dynamicUserAgent
 document = {
     createElement:function(){
         return "createElement() { [native code] }"
@@ -11043,8 +11069,11 @@ function get_result(params, useragent){
 
 
 
-const allParams = process.argv.slice(2);
-const params = allParams[0];
-const useragent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36';
-const a_bogus = get_result(atob(params), useragent)
-console.log(a_bogus)
+// 执行签名计算
+try {
+  const a_bogus = get_result(dynamicParams, dynamicUserAgent);
+  console.log(a_bogus);
+} catch (err) {
+  console.error('[a_bogus] 签名计算失败:', err.message);
+  process.exit(1);
+}

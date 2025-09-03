@@ -1,6 +1,5 @@
 const fetch = require('node-fetch')
 const { sign } = require('./sign')
-const download = require('download')
 const getDeepProperty = require("@orange-opensource/get-deep-property");
 
 // 工具函数：安全地隐藏敏感信息用于日志输出
@@ -16,6 +15,102 @@ const maskSensitiveInfo = (str, type = 'cookie') => {
     // 通用敏感信息隐藏
     if (str.length <= 8) return '****';
     return str.substring(0, 3) + '****' + str.substring(str.length - 3);
+};
+
+/**
+ * 格式化剩余时间为易读格式
+ */
+const formatRemainingTime = (seconds) => {
+    if (seconds <= 0) return '已过期';
+
+    const days = Math.floor(seconds / (24 * 3600));
+    const hours = Math.floor((seconds % (24 * 3600)) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const remainingSeconds = seconds % 60;
+
+    const parts = [];
+    if (days > 0) parts.push(`${days}天`);
+    if (hours > 0) parts.push(`${hours}小时`);
+    if (minutes > 0) parts.push(`${minutes}分钟`);
+    if (remainingSeconds > 0) parts.push(`${remainingSeconds}秒`);
+
+    return parts.length > 0 ? parts.join('') : '即将过期';
+};
+
+/**
+ * 检测 sid_guard 是否过期
+ */
+const checkSidGuardExpiry = (sidGuard) => {
+    const result = {
+        isValid: false,
+        isExpired: true,
+        error: null,
+        details: {
+            sessionId: null,
+            generateTimestamp: null,
+            expiryTimestamp: null,
+            validitySeconds: null,
+            gmtTime: null,
+            currentTimestamp: null,
+            remainingSeconds: 0,
+            remainingTime: null
+        }
+    };
+
+    try {
+        if (!sidGuard || typeof sidGuard !== 'string') {
+            result.error = 'sid_guard 参数无效或为空';
+            return result;
+        }
+
+        const parts = sidGuard.split('|');
+        if (parts.length !== 4) {
+            result.error = `sid_guard 格式错误，应包含4个部分，实际包含${parts.length}个部分`;
+            return result;
+        }
+
+        const [sessionId, generateTimestampStr, validitySecondsStr, gmtTime] = parts;
+        const generateTimestamp = parseInt(generateTimestampStr);
+        const validitySeconds = parseInt(validitySecondsStr);
+
+        if (isNaN(generateTimestamp)) {
+            result.error = `生成时间戳格式错误: ${generateTimestampStr}`;
+            return result;
+        }
+
+        if (isNaN(validitySeconds)) {
+            result.error = `有效期秒数格式错误: ${validitySecondsStr}`;
+            return result;
+        }
+
+        // 计算真正的过期时间：生成时间 + 有效期
+        const expiryTimestamp = generateTimestamp + validitySeconds;
+        const currentTimestamp = Math.floor(Date.now() / 1000);
+        const remainingSeconds = expiryTimestamp - currentTimestamp;
+
+        result.details = {
+            sessionId: sessionId.trim(),
+            generateTimestamp: generateTimestamp,
+            expiryTimestamp: expiryTimestamp,
+            validitySeconds: validitySeconds,
+            gmtTime: gmtTime.trim(),
+            currentTimestamp: currentTimestamp,
+            remainingSeconds: remainingSeconds,
+            remainingTime: formatRemainingTime(remainingSeconds)
+        };
+
+        result.isExpired = remainingSeconds <= 0;
+        result.isValid = !result.isExpired;
+
+        if (result.isExpired) {
+            result.error = `sid_guard 已过期 ${Math.abs(remainingSeconds)} 秒`;
+        }
+
+    } catch (error) {
+        result.error = `解析 sid_guard 时出错: ${error.message}`;
+    }
+
+    return result;
 };
 
 class Scraper {
@@ -450,18 +545,6 @@ class Scraper {
     }
 
     /**
-     * @description download video to local
-     * @param {string} videoId 视频的id
-     * @param {string} videoName 文件名称
-     * @param {string} dirname 目录地址
-     */
-    async downloadVideo(videoId, videoName, dirname) {
-        const videoData = await this.getDouyinVideoData(videoId)
-        let url = await this.getDouyinNoWatermarkVideo(videoData);
-        await download(url, dirname ? `media/${dirname}` : 'media', { filename: `${videoName}.mp4` })
-    }
-
-    /**
      * @description Replaces all special characters in the string (including Spaces)/替换字符串中的所有特殊字符（包含空格）
      * @date 2024/1/4 - 19:45:52
      * @param {*} string
@@ -536,37 +619,9 @@ class Scraper {
      * @param {string} sec_user_id 用户id
      */
     async getTodayVideo(sec_user_id) { }
-
-    /**
-     * @description 备用视频下载方法 - 100%可靠
-     * @param {string} originalUrl 原始视频URL
-     * @param {string} videoId 视频ID
-     */
-    async fallbackVideoDownload(originalUrl, videoId) {
-        const FallbackDownloader = require('../fallback-downloader');
-        const downloader = new FallbackDownloader();
-        
-        console.log('🚨 启动备用下载器...');
-        const result = await downloader.downloadVideo(originalUrl, videoId);
-        
-        if (result.success) {
-            console.log('✅ 备用下载器成功找到可用链接!');
-            return {
-                success: true,
-                downloadUrl: result.url,
-                headers: {
-                    'User-Agent': result.userAgent,
-                    'Referer': result.referer
-                }
-            };
-        } else {
-            console.log('❌ 备用下载器也失败了');
-            return {
-                success: false,
-                error: result.error?.message || '所有下载方法都失败了'
-            };
-        }
-    }
 }
 
 module.exports = Scraper;
+module.exports.maskSensitiveInfo = maskSensitiveInfo;
+module.exports.formatRemainingTime = formatRemainingTime;
+module.exports.checkSidGuardExpiry = checkSidGuardExpiry;
