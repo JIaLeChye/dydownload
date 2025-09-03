@@ -17,9 +17,9 @@
       🌙
     </button>
     
-    <!-- Cookie Update Button -->
-    <button class="cookie-update-btn" id="cookie-update-btn" aria-label="更新Cookie" title="更新Cookie">
-      🍪
+    <!-- Simple Cookie Status Button -->
+    <button class="cookie-status-btn" id="cookie-status-btn" title="Cookie状态 - 点击管理">
+      <span class="cookie-icon">🍪</span>
     </button>
     
     <div class="container mt-3">
@@ -90,15 +90,6 @@
               </button>
             </div>
             <div id="rawLinksContent" class="raw-links-content" style="display: none;">
-              <!-- 原有的文本框保留作为备用 -->
-              <textarea
-                class="form-control d-none"
-                id="result"
-                placeholder="解析后的下载地址"
-                readonly
-                style="min-height: 6rem; resize: vertical; font-family: monospace; font-size: 0.85rem;"
-              ></textarea>
-              
               <!-- 新的链接列表显示区域 -->
               <div id="linksList" class="links-list">
                 <!-- 链接将通过JavaScript动态生成 -->
@@ -135,9 +126,31 @@
     <div id="cookieModal" class="cookie-modal" style="display: none;">
       <div class="cookie-modal-dialog">
         <div class="cookie-modal-header">
-          <h3 class="cookie-modal-title">🍪 更新Cookie</h3>
+          <h3 class="cookie-modal-title">🍪 Cookie管理</h3>
           <button type="button" class="cookie-modal-close" aria-label="关闭">&times;</button>
         </div>
+        
+        <!-- Cookie Status Info -->
+        <div class="cookie-status-info" id="cookie-status-info">
+          <div class="status-row">
+            <span class="status-label">当前状态:</span>
+            <span class="status-value" id="modal-status-text">检查中...</span>
+            <span class="status-icon" id="modal-status-icon">⏳</span>
+          </div>
+          <div class="status-row">
+            <span class="status-label">来源:</span>
+            <span class="status-value" id="modal-cookie-source">-</span>
+          </div>
+          <div class="status-row">
+            <span class="status-label">剩余时间:</span>
+            <span class="status-value" id="modal-cookie-remaining">-</span>
+          </div>
+          <div class="status-row">
+            <span class="status-label">有效性:</span>
+            <span class="status-value" id="modal-cookie-validity">-</span>
+          </div>
+        </div>
+        
         <div class="cookie-modal-body">
           <p class="text-muted mb-3">
             当出现"Cookie已失效"错误时，需要更新Cookie。您可以输入完整的cookie或只输入sid_guard的值。
@@ -182,9 +195,6 @@
         </div>
         <div class="cookie-modal-footer">
           <button type="button" class="cookie-btn cookie-btn-secondary" id="cookie-cancel-btn">取消</button>
-          <button type="button" class="cookie-btn cookie-btn-info" id="vercel-config-btn" style="display: none;">
-            查看配置
-          </button>
           <button type="button" class="cookie-btn cookie-btn-primary" id="cookie-save-btn">
             更新Cookie
           </button>

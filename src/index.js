@@ -1,6 +1,7 @@
 //#!/usr/bin/env node
 
-const Scraper = require('..')
+const Scraper = require('../bin/index.js')
+const { maskSensitiveInfo, formatRemainingTime, checkSidGuardExpiry } = require('../bin/index.js')
 const express = require('express')
 const path = require('path')
 const fs = require('fs')
@@ -10,19 +11,34 @@ const { marked } = require('marked')
 
 const pipelineAsync = promisify(pipeline)
 
-// 工具函数：安全地隐藏敏感信息用于日志输出
-const maskSensitiveInfo = (str, type = 'cookie') => {
-    if (!str || typeof str !== 'string') return str;
-    
-    if (type === 'cookie') {
-        // 隐藏Cookie值，只显示前4位和后4位
-        if (str.length <= 8) return '****';
-        return str.substring(0, 4) + '****' + str.substring(str.length - 4);
+/**
+ * 从 Cookie 字符串中提取并检测 sid_guard
+ * @param {string} cookieString - Cookie 字符串
+ * @returns {object} 检测结果
+ */
+const checkCookieSidGuardExpiry = (cookieString) => {
+    if (!cookieString || typeof cookieString !== 'string') {
+        return {
+            isValid: false,
+            isExpired: true,
+            error: 'Cookie 字符串为空或无效',
+            details: null
+        };
     }
-    
-    // 通用敏感信息隐藏
-    if (str.length <= 8) return '****';
-    return str.substring(0, 3) + '****' + str.substring(str.length - 3);
+
+    // 从Cookie中提取sid_guard
+    const sidGuardMatch = cookieString.match(/sid_guard=([^;]+)/);
+    if (!sidGuardMatch) {
+        return {
+            isValid: false,
+            isExpired: true,
+            error: '未找到 sid_guard 参数',
+            details: null
+        };
+    }
+
+    const sidGuard = decodeURIComponent(sidGuardMatch[1]);
+    return checkSidGuardExpiry(sidGuard);
 };
 
 // 配置dotenv加载.env.local文件
@@ -387,7 +403,7 @@ app.get('/proxy-download', async (req, res) => {
         const response = await fetch(url, {
             method: 'GET',
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0',
                 'Referer': 'https://www.douyin.com/',
                 'Accept': '*/*',
                 'Accept-Encoding': 'identity',
@@ -475,7 +491,7 @@ app.get('/proxy-video', async (req, res) => {
         
         // 构建请求头，支持 Range 请求（拖拽进度条）
         const headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0',
             'Referer': 'https://www.douyin.com/',
             'Accept': '*/*',
             'Accept-Encoding': 'identity',
@@ -556,105 +572,6 @@ const getArgsPort = () => {
     }
 }
 
-// Debug端点: 获取真实URL信息
-app.get('/get-real-url', async (req, res) => {
-    const url = req.query.url;
-    
-    if (!url) {
-        return res.json({ success: false, error: '缺少URL参数' });
-    }
-    
-    try {
-
-        // 检查是否是抖音链接，如果是则使用特殊处理
-        const isDouyinUrl = url.includes('douyin.com') || url.includes('iesdouyin.com');
-        
-        let response;
-        
-        if (isDouyinUrl) {
-            // 对抖音链接使用适当的用户代理
-            response = await fetch(url, { 
-                method: 'HEAD',
-                redirect: 'follow',
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 10_3_1 like Mac OS X) AppleWebKit/603.1.30 (KHTML, like Gecko) Version/10.0 Mobile/14E304 Safari/602.1'
-                }
-            });
-        } else {
-            // 对其他链接使用默认方式
-            response = await fetch(url, { 
-                method: 'HEAD',
-                redirect: 'follow'
-            });
-        }
-        
-        const headers = {
-            contentType: response.headers.get('content-type') || 'unknown',
-            contentLength: response.headers.get('content-length') || 'unknown',
-            lastModified: response.headers.get('last-modified') || 'unknown',
-            server: response.headers.get('server') || 'unknown'
-        };
-        
-        res.json({
-            success: true,
-            originalUrl: url,
-            realUrl: response.url,
-            status: response.status,
-            redirected: response.redirected,
-            headers: headers,
-            urlType: isDouyinUrl ? 'douyin' : 'general'
-        });
-        
-    } catch (error) {
-        console.error('❌ Debug错误:', error.message);
-        res.json({ 
-            success: false, 
-            error: error.message,
-            originalUrl: url
-        });
-    }
-});
-
-// Debug端点: 直接下载测试
-app.get('/direct-download', async (req, res) => {
-    const url = req.query.url;
-    const filename = req.query.filename || 'test_download.mp4';
-    
-    if (!url) {
-        return res.status(400).send('缺少URL参数');
-    }
-    
-    try {
-        console.log('⬇️ Debug: 直接下载测试 -', filename);
-        
-        const response = await fetch(url);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const contentType = response.headers.get('content-type') || 'application/octet-stream';
-        const contentLength = response.headers.get('content-length');
-        
-        res.setHeader('Content-Type', contentType);
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        
-        if (contentLength) {
-            res.setHeader('Content-Length', contentLength);
-        }
-        
-        // 修复: 简化的方式
-        const text = await response.text();
-        res.send(text);
-
-    } catch (error) {
-        console.error('❌ Debug下载错误:', error.message);
-        if (!res.headersSent) {
-            res.status(500).send('下载失败: ' + error.message);
-        }
-    }
-});
-
 // Cookie更新API - 支持环境变量和Vercel自动更新
 let VercelEnvManager, vercelEnv;
 
@@ -688,10 +605,21 @@ app.post('/api/update-cookie', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Cookie格式不正确' });
         }
 
-        // 🚀 动态更新scraper实例中的cookie - 立即生效！
+        // 🚀 动态更新环境变量中的cookie - 立即生效！
+        // 注意：这是用户主动更新的真实有效的 sid_guard，不是我们生成的测试数据
+        process.env.DOUYIN_COOKIE = finalCookie;
+        console.log('🍪 DOUYIN_COOKIE 环境变量已更新，立即生效！[Cookie: ' + maskSensitiveInfo(finalCookie) + ']');
+
+        // 同时更新 scraper 实例（如果存在）
         if (scraper && scraper.updateCookie) {
             scraper.updateCookie(finalCookie);
-            console.log('🍪 Scraper Cookie已动态更新，立即生效！[Cookie: ' + maskSensitiveInfo(finalCookie) + ']');
+        }
+
+        // 🔍 检测用户提供的 sid_guard 过期状态
+        const sidGuardStatus = checkCookieSidGuardExpiry(finalCookie);
+        console.log('🔍 sid_guard 状态检测:', sidGuardStatus.isValid ? '✅ 有效' : '❌ 过期/无效');
+        if (sidGuardStatus.details && sidGuardStatus.details.remainingTime) {
+            console.log('⏰ 剩余时间:', sidGuardStatus.details.remainingTime);
         }
 
         let vercelUpdateResult = null;
@@ -728,6 +656,13 @@ app.post('/api/update-cookie', async (req, res) => {
             message,
             immediate,
             noRedeployNeeded,
+            sidGuardStatus: {
+                isValid: sidGuardStatus.isValid,
+                isExpired: sidGuardStatus.isExpired,
+                error: sidGuardStatus.error,
+                remainingTime: sidGuardStatus.details ? sidGuardStatus.details.remainingTime : null,
+                remainingSeconds: sidGuardStatus.details ? sidGuardStatus.details.remainingSeconds : 0
+            },
             vercelConfig: vercelEnv ? vercelEnv.getConfigStatus() : { isConfigured: false, available: false },
             vercelUpdateResult: vercelUpdateResult ? { success: true } : null
         });
@@ -735,6 +670,100 @@ app.post('/api/update-cookie', async (req, res) => {
     } catch (error) {
         console.error('Cookie更新错误:', error.message || 'Unknown error');
         res.status(500).json({ success: false, message: '更新失败: ' + error.message });
+    }
+});
+
+// 新增：Cookie 状态检查API - 检测当前 sid_guard 是否过期
+app.get('/api/cookie-status', (req, res) => {
+    try {
+        // 重新加载 .env.local 文件以确保获取最新值
+        require('dotenv').config({ path: path.join(__dirname, '../.env.local') });
+        
+        // 首先尝试从环境变量获取（.env.local中的值）
+        let currentCookie = process.env.DOUYIN_COOKIE;
+        let cookieSource = 'environment';
+        
+        // 如果环境变量没有设置，从 scraper 实例获取
+        if (!currentCookie && scraper && scraper.douyinApiHeaders && scraper.douyinApiHeaders.cookie) {
+            currentCookie = scraper.douyinApiHeaders.cookie;
+            cookieSource = 'scraper';
+        }
+        
+        if (!currentCookie) {
+            return res.json({
+                success: false,
+                message: 'Cookie 未设置',
+                sidGuardStatus: {
+                    isValid: false,
+                    isExpired: true,
+                    error: '未找到任何Cookie配置',
+                    remainingTime: null,
+                    remainingSeconds: 0
+                },
+                cookieInfo: {
+                    source: 'none',
+                    hasCookie: false,
+                    cookiePreview: null,
+                    isPlaceholder: false
+                }
+            });
+        }
+
+        // 检查是否是默认的占位符
+        if (currentCookie.includes('替换为您的sid_guard值')) {
+            return res.json({
+                success: false,
+                message: '当前使用的是默认占位符，需要设置真实Cookie',
+                sidGuardStatus: {
+                    isValid: false,
+                    isExpired: true,
+                    error: '当前Cookie是默认占位符，请从浏览器获取真实的sid_guard值',
+                    remainingTime: null,
+                    remainingSeconds: 0
+                },
+                cookieInfo: {
+                    source: cookieSource,
+                    hasCookie: true,
+                    cookiePreview: maskSensitiveInfo(currentCookie, 'cookie'),
+                    isPlaceholder: true
+                }
+            });
+        }
+
+        // 检测 sid_guard 状态
+        const sidGuardStatus = checkCookieSidGuardExpiry(currentCookie);
+
+        res.json({
+            success: sidGuardStatus.isValid,
+            message: sidGuardStatus.isValid ? 'Cookie 状态正常' : 'Cookie 已过期或无效',
+            sidGuardStatus: {
+                isValid: sidGuardStatus.isValid,
+                isExpired: sidGuardStatus.isExpired,
+                error: sidGuardStatus.error,
+                remainingTime: sidGuardStatus.details ? sidGuardStatus.details.remainingTime : null,
+                remainingSeconds: sidGuardStatus.details ? sidGuardStatus.details.remainingSeconds : 0
+            },
+            cookieInfo: {
+                source: cookieSource,
+                hasCookie: true,
+                cookiePreview: maskSensitiveInfo(currentCookie, 'cookie'),
+                isPlaceholder: false
+            }
+        });
+
+    } catch (error) {
+        console.error('Cookie 状态检查错误:', error);
+        res.status(500).json({
+            success: false,
+            message: '状态检查失败: ' + error.message,
+            sidGuardStatus: {
+                isValid: false,
+                isExpired: true,
+                error: '检查过程中发生错误',
+                remainingTime: null,
+                remainingSeconds: 0
+            }
+        });
     }
 });
 

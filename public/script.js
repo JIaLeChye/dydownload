@@ -79,7 +79,6 @@ document.addEventListener("DOMContentLoaded", function () {
       }
 
       const requestData = { url: videoUrl };
-      const resultDom = document.getElementById("result");
       const loadingDom = document.getElementById("loading");
       const copyDom = document.getElementById("autocopy");
       const submitText = document.getElementById("submit-text");
@@ -87,31 +86,7 @@ document.addEventListener("DOMContentLoaded", function () {
       // Show loading state
       if (loadingDom) loadingDom.hidden = false;
       if (copyDom) copyDom.hidden = true;
-      // 不要隐藏 resultDom，因为它是原始链接文本框
-      // if (resultDom) resultDom.hidden = true;
       if (submitText) submitText.textContent = "解析中...";
-      
-      // 临时添加模拟数据进行测试
-      const simulateSuccess = false; // 设置为 true 来使用模拟数据
-      
-      if (simulateSuccess) {
-
-        // 模拟成功的API响应
-        const mockData = {
-          code: 0,
-          data: [
-            "https://example.com/video1.mp4",
-            "https://example.com/image1.jpg",
-            "https://example.com/video2.mp4"
-          ]
-        };
-        
-        // 模拟网络延迟
-        setTimeout(() => {
-          handleApiResponse(mockData);
-        }, 1000);
-        return; // 跳过实际的网络请求
-      }
       
       // 首先尝试zjcdn API（最稳定）
       fetch("/zjcdn", {
@@ -238,11 +213,6 @@ function handleApiResponse(data) {
         const filteredVideoUrls = videoUrls.length > 0 ? [videoUrls[0]] : [];
         urlsWithType = [...filteredVideoUrls, ...imageUrls];
         allUrls = urlsWithType.map(item => item.url);
-      }
-      // 填充原始链接区域（保留原有逻辑用于复制功能）
-      const resultDom = document.getElementById("result");
-      if (resultDom) {
-        resultDom.value = allUrls.join(",\n");
       }
       
       // 生成分开的链接列表（使用类型信息）
@@ -648,32 +618,10 @@ function finalFallbackDownload(url, fileName) {
   document.body.removeChild(link);
 }
 
-// 获取真实URL函数
-async function getRealUrl(url) {
-  try {
-    const response = await fetch(`/get-real-url?url=${encodeURIComponent(url)}`);
-    const result = await response.json();
-    
-    if (result.success) {
-      return {
-        success: true,
-        realUrl: result.realUrl,
-        contentType: result.headers.contentType,
-        contentLength: result.headers.contentLength
-      };
-    } else {
-      return { success: false, error: result.error };
-    }
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-}
-
 // 重置界面函数
 function resetInterface() {
   const rawLinksSection = document.getElementById("rawLinks");
   const copyDom = document.getElementById("autocopy");
-  const resultDom = document.getElementById("result");
   const mediaPreview = document.getElementById("mediaPreview");
   const linksList = document.getElementById("linksList");
   
@@ -682,7 +630,6 @@ function resetInterface() {
     rawLinksSection.style.display = 'none';
   }
   if (copyDom) copyDom.hidden = true;
-  if (resultDom) resultDom.value = "";
   if (mediaPreview) mediaPreview.style.display = 'none';
   if (linksList) linksList.innerHTML = '';
   
@@ -721,15 +668,34 @@ function copyTextToClipboard(textToCopy) {
 }
 
 function copyToClipboard() {
-  var resultDom = document.getElementById("result");
-  var textToCopy = resultDom.value;
+  // 从linksList获取所有链接
+  const linksList = document.getElementById("linksList");
+  if (!linksList) {
+    showToast('❌ 没有找到链接', 'error');
+    return;
+  }
+  
+  const linkItems = linksList.querySelectorAll('.link-item');
+  if (linkItems.length === 0) {
+    showToast('❌ 没有可复制的链接', 'error');
+    return;
+  }
+  
+  const urls = [];
+  linkItems.forEach(item => {
+    const urlSpan = item.querySelector('.link-url');
+    if (urlSpan && urlSpan.textContent) {
+      urls.push(urlSpan.textContent.trim());
+    }
+  });
+  
+  const textToCopy = urls.join(',\n');
   
   // 优先使用现代 clipboard API
   if (navigator.clipboard && window.isSecureContext) {
     navigator.clipboard.writeText(textToCopy)
       .then(function () {
         showToast('📋 所有链接已复制', 'success');
-
       })
       .catch(function (error) {
         fallbackCopyTextToClipboard(textToCopy);
@@ -1446,25 +1412,33 @@ document.addEventListener('keydown', function(event) {
 class CookieManager {
   constructor() {
     this.modal = document.getElementById('cookieModal');
-    this.updateBtn = document.getElementById('cookie-update-btn');
+    this.statusBtn = document.getElementById('cookie-status-btn');
     this.closeBtn = document.querySelector('.cookie-modal-close');
     this.cancelBtn = document.getElementById('cookie-cancel-btn');
     this.saveBtn = document.getElementById('cookie-save-btn');
-    this.configBtn = document.getElementById('vercel-config-btn');
     this.textarea = document.getElementById('cookie-textarea');
     this.status = document.getElementById('cookie-status');
     this.vercelCheckbox = document.getElementById('update-vercel-env');
     this.vercelStatus = document.getElementById('vercel-config-status');
     
+    // Modal内的状态显示元素
+    this.modalStatusInfo = document.getElementById('cookie-status-info');
+    this.modalStatusText = document.getElementById('modal-status-text');
+    this.modalStatusIcon = document.getElementById('modal-status-icon');
+    this.modalCookieSource = document.getElementById('modal-cookie-source');
+    this.modalCookieRemaining = document.getElementById('modal-cookie-remaining');
+    this.modalCookieValidity = document.getElementById('modal-cookie-validity');
+    
     this.vercelConfig = null;
+    this.statusCheckInterval = null; // 定期检查 sid_guard 状态的定时器
     
     this.init();
   }
   
   init() {
-    // 绑定事件
-    if (this.updateBtn) {
-      this.updateBtn.addEventListener('click', () => this.openModal());
+    // 绑定圆形按钮点击事件
+    if (this.statusBtn) {
+      this.statusBtn.addEventListener('click', () => this.openModal());
     }
     if (this.closeBtn) {
       this.closeBtn.addEventListener('click', () => this.closeModal());
@@ -1474,9 +1448,6 @@ class CookieManager {
     }
     if (this.saveBtn) {
       this.saveBtn.addEventListener('click', () => this.saveCookie());
-    }
-    if (this.configBtn) {
-      this.configBtn.addEventListener('click', () => this.showVercelConfig());
     }
     
     // 点击模态框背景关闭
@@ -1510,6 +1481,9 @@ class CookieManager {
         }
       });
     }
+    
+    // 初始化 sid_guard 状态检查
+    this.initStatusCheck();
   }
   
   
@@ -1524,6 +1498,9 @@ class CookieManager {
         this.textarea.focus();
       }
       this.hideStatus();
+      
+      // 更新模态框内的状态信息
+      await this.updateModalStatus();
       
       // 加载Vercel配置状态
       await this.loadVercelConfig();
@@ -1565,7 +1542,6 @@ class CookieManager {
       `;
       this.vercelCheckbox.disabled = true;
       this.vercelCheckbox.checked = false;
-      if (this.configBtn) this.configBtn.style.display = 'none';
       return;
     }
     
@@ -1577,7 +1553,6 @@ class CookieManager {
         </div>
       `;
       this.vercelCheckbox.disabled = false;
-      if (this.configBtn) this.configBtn.style.display = 'none';
     } else {
       // Vercel功能可用但未配置
       const missing = [];
@@ -1587,63 +1562,11 @@ class CookieManager {
       this.vercelStatus.innerHTML = `
         <div class="text-warning small">
           ⚠️ 缺少配置: ${missing.join(', ')}
-          <button class="btn btn-link btn-sm p-0 ms-1" onclick="cookieManager.showVercelConfig()">
-            查看配置说明
-          </button>
         </div>
       `;
       this.vercelCheckbox.disabled = true;
       this.vercelCheckbox.checked = false;
-      if (this.configBtn) this.configBtn.style.display = 'inline-block';
     }
-  }
-  
-  showVercelConfig() {
-    if (!this.vercelConfig) return;
-    
-    const { instructions, config } = this.vercelConfig;
-    
-    if (config.available === false) {
-      const configInfo = `
-Vercel自动同步功能（可选）
-
-当前状态：功能未启用
-这是正常的！基础Cookie更新功能完全可用。
-
-如果你需要启用高级的Vercel环境变量自动同步功能：
-
-1. 在服务器环境中安装axios包
-2. 确保vercel-env-manager.js文件存在
-3. 配置以下环境变量：
-
-VERCEL_TOKEN=${instructions.vercelToken}
-VERCEL_PROJECT_ID=${instructions.projectId}
-${instructions.teamId ? 'VERCEL_TEAM_ID=' + instructions.teamId : ''}
-
-配置后重启应用即可使用自动同步功能。
-
-💡 提示：即使不配置这些，Cookie更新功能仍然完全正常！
-      `;
-      alert(configInfo);
-      return;
-    }
-    
-    const configInfo = `
-Vercel环境变量配置说明：
-
-1. VERCEL_TOKEN:
-   ${instructions.vercelToken}
-   
-2. VERCEL_PROJECT_ID:
-   ${instructions.projectId}
-   
-3. VERCEL_TEAM_ID (可选):
-   ${instructions.teamId}
-
-配置后重新启动应用即可使用自动更新功能。
-    `;
-    
-    alert(configInfo);
   }
   
   autoResizeTextarea() {
@@ -1720,6 +1643,24 @@ Vercel环境变量配置说明：
           this.showStatus(result.message, 'success');
         }
         
+        // 显示 sid_guard 状态信息
+        if (result.sidGuardStatus) {
+          const { sidGuardStatus } = result;
+          if (sidGuardStatus.isValid) {
+            const timeMsg = sidGuardStatus.remainingTime ? ` (剩余: ${sidGuardStatus.remainingTime})` : '';
+            setTimeout(() => {
+              showToast(`✅ sid_guard 状态正常${timeMsg}`, 'success');
+            }, 1500);
+          } else {
+            setTimeout(() => {
+              showToast(`❌ sid_guard 状态异常: ${sidGuardStatus.error}`, 'error');
+            }, 1500);
+          }
+          
+          // 立即更新状态显示
+          this.updateStatusDisplay(result);
+        }
+        
         // 如果有Vercel备份
         if (result.vercelUpdateResult && updateVercel) {
           setTimeout(() => {
@@ -1759,6 +1700,345 @@ Vercel环境变量配置说明：
       this.vercelStatus.innerHTML = '';
     }
   }
+  
+  // 初始化状态检查
+  initStatusCheck() {
+    // 立即执行一次检查
+    this.checkCookieStatus();
+    
+    // 设置定期检查（每30秒）
+    this.statusCheckInterval = setInterval(() => {
+      this.checkCookieStatus();
+    }, 30000);
+  }
+  
+  // 新增：刷新状态（带视觉反馈）
+  async refreshStatus() {
+    if (this.refreshBtn) {
+      // 添加loading状态
+      const originalIcon = this.refreshBtn.querySelector('.btn-icon').textContent;
+      this.refreshBtn.querySelector('.btn-icon').textContent = '⏳';
+      this.refreshBtn.disabled = true;
+      
+      try {
+        await this.checkSidGuardStatus();
+        
+        // 成功反馈
+        this.refreshBtn.querySelector('.btn-icon').textContent = '✅';
+        setTimeout(() => {
+          this.refreshBtn.querySelector('.btn-icon').textContent = originalIcon;
+          this.refreshBtn.disabled = false;
+        }, 1000);
+      } catch (error) {
+        // 错误反馈
+        this.refreshBtn.querySelector('.btn-icon').textContent = '❌';
+        setTimeout(() => {
+          this.refreshBtn.querySelector('.btn-icon').textContent = originalIcon;
+          this.refreshBtn.disabled = false;
+        }, 1000);
+      }
+    }
+  }
+
+  // 新增：检查 sid_guard 状态
+  async checkSidGuardStatus() {
+    try {
+      const response = await fetch('/api/cookie-status');
+      if (response.ok) {
+        const result = await response.json();
+        this.updateStatusDisplay(result);
+      } else {
+        this.updateStatusDisplay({
+          success: false,
+          message: '状态检查失败',
+          sidGuardStatus: {
+            isValid: false,
+            isExpired: true,
+            error: '无法连接到服务器',
+            remainingTime: null
+          }
+        });
+      }
+    } catch (error) {
+      console.error('检查 Cookie 状态失败:', error);
+      this.updateStatusDisplay({
+        success: false,
+        message: '网络错误',
+        sidGuardStatus: {
+          isValid: false,
+          isExpired: true,
+          error: '网络连接失败',
+          remainingTime: null
+        }
+      });
+    }
+  }
+  
+  // 新增：更新状态显示
+  updateStatusDisplay(result) {
+    if (!this.statusDisplay || !this.statusIcon || !this.statusText) {
+      return;
+    }
+
+    const { sidGuardStatus, cookieInfo } = result;
+    
+    // 移除所有状态类
+    this.statusDisplay.classList.remove('valid', 'expired', 'warning');
+    
+    // 更新基本信息
+    if (this.statusTitle) {
+      this.statusTitle.textContent = 'Cookie 状态';
+    }
+    
+    // 更新详细信息
+    if (this.cookieSource && cookieInfo) {
+      this.cookieSource.textContent = cookieInfo.source === 'environment' ? '.env.local' : 
+                                      cookieInfo.source === 'scraper' ? '默认配置' : '未知';
+    }
+    
+    if (this.cookieRemaining && sidGuardStatus.remainingTime) {
+      this.cookieRemaining.textContent = sidGuardStatus.remainingTime;
+    }
+
+    if (sidGuardStatus.error) {
+      // 错误状态
+      this.statusIcon.textContent = '❌';
+      this.statusText.textContent = sidGuardStatus.error;
+      this.statusDisplay.classList.add('expired');
+      if (this.cookieValidity) {
+        this.cookieValidity.textContent = '错误';
+      }
+    } else if (sidGuardStatus.isValid) {
+      // 有效状态
+      this.statusIcon.textContent = '✅';
+      const remainingTime = sidGuardStatus.remainingTime || '未知';
+      
+      // 如果剩余时间少于1小时，显示警告
+      if (sidGuardStatus.remainingSeconds && sidGuardStatus.remainingSeconds < 3600) {
+        this.statusDisplay.classList.add('warning');
+        this.statusIcon.textContent = '⚠️';
+        this.statusText.textContent = `即将过期`;
+        if (this.cookieValidity) {
+          this.cookieValidity.textContent = '即将过期';
+        }
+      } else {
+        this.statusDisplay.classList.add('valid');
+        this.statusText.textContent = `运行正常`;
+        if (this.cookieValidity) {
+          this.cookieValidity.textContent = '有效';
+        }
+      }
+    } else {
+      // 已过期
+      this.statusIcon.textContent = '❌';
+      this.statusText.textContent = '会话已过期';
+      this.statusDisplay.classList.add('expired');
+      if (this.cookieValidity) {
+        this.cookieValidity.textContent = '已过期';
+      }
+      if (this.cookieRemaining) {
+        this.cookieRemaining.textContent = '已过期';
+      }
+    }
+    
+    // 显示状态和详情
+    this.statusDisplay.style.display = 'block';
+    
+    // 根据响应式状态设置显示模式
+    this.updateDisplayMode();
+    
+    // 如果是过期或即将过期，显示更明显的提示
+    if (sidGuardStatus.isExpired || (sidGuardStatus.remainingSeconds && sidGuardStatus.remainingSeconds < 3600)) {
+      this.showExpiryNotification(sidGuardStatus);
+    }
+  }
+  
+  // 新增：切换状态详情显示
+  toggleStatusDetails() {
+    if (this.statusDetails) {
+      const isVisible = this.statusDetails.style.display !== 'none';
+      this.statusDetails.style.display = isVisible ? 'none' : 'block';
+    }
+  }
+  
+  // 新增：显示过期通知
+  showExpiryNotification(sidGuardStatus) {
+    // 创建或更新通知
+    let notification = document.getElementById('expiry-notification');
+    if (!notification) {
+      notification = document.createElement('div');
+      notification.id = 'expiry-notification';
+      notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 15px 20px;
+        background: linear-gradient(135deg, #ff6b6b, #ff8e8e);
+        color: white;
+        border-radius: 10px;
+        box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+        z-index: 10000;
+        font-weight: 500;
+        min-width: 300px;
+        animation: slideInRight 0.3s ease-out;
+      `;
+      document.body.appendChild(notification);
+    }
+    
+    if (sidGuardStatus.isExpired) {
+      notification.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 18px;">❌</span>
+          <div>
+            <div style="font-weight: bold;">Cookie 已过期</div>
+            <div style="font-size: 12px; opacity: 0.9;">请更新 .env.local 中的 sid_guard</div>
+          </div>
+        </div>
+      `;
+    } else if (sidGuardStatus.remainingSeconds < 3600) {
+      notification.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 18px;">⚠️</span>
+          <div>
+            <div style="font-weight: bold;">Cookie 即将过期</div>
+            <div style="font-size: 12px; opacity: 0.9;">剩余: ${sidGuardStatus.remainingTime}</div>
+          </div>
+        </div>
+      `;
+    }
+    
+    // 5秒后自动隐藏
+    setTimeout(() => {
+      if (notification && notification.parentNode) {
+        notification.style.animation = 'slideOutRight 0.3s ease-in';
+        setTimeout(() => {
+          if (notification.parentNode) {
+            notification.parentNode.removeChild(notification);
+          }
+        }, 300);
+      }
+    }, 5000);
+  }
+  
+  // 检查 Cookie 状态
+  async checkCookieStatus() {
+    try {
+      const response = await fetch('/api/cookie-status');
+      if (response.ok) {
+        const result = await response.json();
+        this.updateStatusDisplay(result);
+        return result;
+      } else {
+        throw new Error('状态检查失败');
+      }
+    } catch (error) {
+      console.error('检查 Cookie 状态失败:', error);
+      this.updateStatusDisplay({
+        success: false,
+        message: '网络错误',
+        sidGuardStatus: {
+          isValid: false,
+          isExpired: true,
+          error: '网络连接失败',
+          remainingTime: null
+        }
+      });
+    }
+  }
+  
+  // 更新圆形按钮状态显示
+  updateStatusDisplay(result) {
+    if (!this.statusBtn) return;
+
+    const { sidGuardStatus } = result;
+    
+    // 移除所有状态类
+    this.statusBtn.classList.remove('status-valid', 'status-expired', 'status-warning', 'status-unknown');
+    
+    if (sidGuardStatus.error) {
+      // 错误状态
+      this.statusBtn.classList.add('status-expired');
+      this.statusBtn.title = `Cookie状态 - 错误: ${sidGuardStatus.error}`;
+    } else if (sidGuardStatus.isValid) {
+      // 有效状态 - 检查是否即将过期
+      if (sidGuardStatus.remainingSeconds && sidGuardStatus.remainingSeconds < 3600) {
+        this.statusBtn.classList.add('status-warning');
+        this.statusBtn.title = `Cookie状态 - 即将过期 (${sidGuardStatus.remainingTime})`;
+      } else {
+        this.statusBtn.classList.add('status-valid');
+        this.statusBtn.title = `Cookie状态 - 运行正常 (剩余: ${sidGuardStatus.remainingTime || '未知'})`;
+      }
+    } else {
+      // 已过期
+      this.statusBtn.classList.add('status-expired');
+      this.statusBtn.title = 'Cookie状态 - 会话已过期，需要更新';
+    }
+  }
+  
+  // 更新模态框内的状态信息
+  async updateModalStatus() {
+    try {
+      const result = await this.checkCookieStatus();
+      if (!result) return;
+      
+      const { sidGuardStatus, cookieInfo } = result;
+      
+      // 更新模态框内的状态信息面板
+      if (this.modalStatusInfo) {
+        // 移除状态类
+        this.modalStatusInfo.classList.remove('status-valid', 'status-warning', 'status-expired');
+        
+        if (sidGuardStatus.error) {
+          this.modalStatusInfo.classList.add('status-expired');
+          if (this.modalStatusText) this.modalStatusText.textContent = sidGuardStatus.error;
+          if (this.modalStatusIcon) this.modalStatusIcon.textContent = '❌';
+        } else if (sidGuardStatus.isValid) {
+          if (sidGuardStatus.remainingSeconds && sidGuardStatus.remainingSeconds < 3600) {
+            this.modalStatusInfo.classList.add('status-warning');
+            if (this.modalStatusText) this.modalStatusText.textContent = '即将过期';
+            if (this.modalStatusIcon) this.modalStatusIcon.textContent = '⚠️';
+          } else {
+            this.modalStatusInfo.classList.add('status-valid');
+            if (this.modalStatusText) this.modalStatusText.textContent = '运行正常';
+            if (this.modalStatusIcon) this.modalStatusIcon.textContent = '✅';
+          }
+        } else {
+          this.modalStatusInfo.classList.add('status-expired');
+          if (this.modalStatusText) this.modalStatusText.textContent = '会话已过期';
+          if (this.modalStatusIcon) this.modalStatusIcon.textContent = '❌';
+        }
+        
+        // 更新详细信息
+        if (this.modalCookieSource && cookieInfo) {
+          this.modalCookieSource.textContent = cookieInfo.source === 'environment' ? '.env.local' : 
+                                              cookieInfo.source === 'scraper' ? '默认配置' : '未知';
+        }
+        
+        if (this.modalCookieRemaining) {
+          this.modalCookieRemaining.textContent = sidGuardStatus.remainingTime || (sidGuardStatus.isExpired ? '已过期' : '未知');
+        }
+        
+        if (this.modalCookieValidity) {
+          if (sidGuardStatus.error) {
+            this.modalCookieValidity.textContent = '错误';
+          } else if (sidGuardStatus.isValid) {
+            this.modalCookieValidity.textContent = sidGuardStatus.remainingSeconds && sidGuardStatus.remainingSeconds < 3600 ? '即将过期' : '有效';
+          } else {
+            this.modalCookieValidity.textContent = '已过期';
+          }
+        }
+      }
+    } catch (error) {
+      console.error('更新模态框状态失败:', error);
+    }
+  }
+
+  // 清理定时器
+  destroy() {
+    if (this.statusCheckInterval) {
+      clearInterval(this.statusCheckInterval);
+    }
+  }
 }
 
 // 全局变量以供HTML中的onclick调用
@@ -1767,5 +2047,12 @@ let cookieManager;
 // 初始化Cookie管理器
 document.addEventListener('DOMContentLoaded', function() {
   cookieManager = new CookieManager();
+});
+
+// 页面卸载时清理定时器
+window.addEventListener('beforeunload', function() {
+  if (cookieManager && cookieManager.destroy) {
+    cookieManager.destroy();
+  }
 });
 

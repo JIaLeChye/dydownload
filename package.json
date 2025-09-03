@@ -16,7 +16,6 @@
   "engines": {
     "node": ">=18.17"
   },
-
   "pkg": {
     "scripts": [
       "./src/index.js",
@@ -49,7 +48,6 @@
     "@orange-opensource/get-deep-property": "^1.0.1",
     "axios": "^1.11.0",
     "dotenv": "^16.6.1",
-    "download": "^8.0.0",
     "express": "^4.18.2",
     "marked": "^11.1.1",
     "node-fetch": "^2.7.0"
