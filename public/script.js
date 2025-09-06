@@ -2,6 +2,9 @@
 const themeToggle = document.getElementById('theme-toggle');
 const body = document.body;
 
+// Global variables
+let currentMediaItems = [];
+
 // Check for saved theme preference or default to 'light'
 const currentTheme = localStorage.getItem('theme') || 'light';
 
@@ -80,12 +83,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
       const requestData = { url: videoUrl };
       const loadingDom = document.getElementById("loading");
-      const copyDom = document.getElementById("autocopy");
       const submitText = document.getElementById("submit-text");
       
       // Show loading state
       if (loadingDom) loadingDom.hidden = false;
-      if (copyDom) copyDom.hidden = true;
       if (submitText) submitText.textContent = "解析中...";
       
       // 首先尝试zjcdn API（最稳定）
@@ -163,7 +164,6 @@ document.addEventListener("DOMContentLoaded", function () {
 function handleApiResponse(data) {
   const loadingDom = document.getElementById("loading");
   const submitText = document.getElementById("submit-text");
-  const copyDom = document.getElementById("autocopy");
   
   if (loadingDom) loadingDom.hidden = true;
   if (submitText) submitText.textContent = "解析";
@@ -215,21 +215,7 @@ function handleApiResponse(data) {
         allUrls = urlsWithType.map(item => item.url);
       }
       
-      // 生成分开的链接列表（使用类型信息）
-  generateLinksListWithTypes(urlsWithType);
-      
-      // 显示原始链接区域，但复制按钮保持隐藏直到展开
-      const rawLinksSection = document.getElementById("rawLinks");
-      if (rawLinksSection) {
-        rawLinksSection.hidden = false;
-        // 确保样式正确应用
-        rawLinksSection.style.display = 'block';
 
-      } else {
-        console.error('Raw links section not found!');
-      }
-      // 不自动显示复制按钮，等到用户点击展开时才显示
-      if (copyDom) copyDom.hidden = true;
       
   // 显示媒体预览（非 debug 只显示一条也兼容）
   displayMediaPreview(allUrls);
@@ -254,91 +240,7 @@ function handleApiResponse(data) {
   }
 }
 
-// 使用明确类型信息生成链接列表
-function generateLinksListWithTypes(urlsWithType) {
-  const linksList = document.getElementById('linksList');
-  if (!linksList) return;
-  
-  linksList.innerHTML = '';
-  
-  urlsWithType.forEach((item, index) => {
-    const { url, type } = item;
-    const isVideo = type === 'video';
-    const isImage = type === 'image';
-    
-    const linkItem = document.createElement('div');
-    linkItem.className = 'link-item';
-    
-    linkItem.innerHTML = `
-      <span class="link-type-badge ${isVideo ? 'link-type-video' : 'link-type-image'}" id="badge-${index}">
-        ${isVideo ? '🎬 视频' : '📸 图片'} ${index + 1}
-      </span>
-      <a href="${url}" target="_blank" class="link-url" title="点击在新标签页中打开">
-        ${url}
-      </a>
-      <div class="link-actions">
-        <button class="btn btn-sm btn-outline-primary" onclick="copySingleLink('${url}')" title="复制链接">
-          📋 复制链接
-        </button>
-        <button class="btn btn-sm btn-outline-success" onclick="downloadMedia('${url}', ${index})" title="智能下载（视频自动使用代理）">
-          ⬇️ 智能下载
-        </button>
-      </div>
-    `;
-    
-    linksList.appendChild(linkItem);
-    
-    // 如果初始判断不确定，可以进行异步验证
-    if (type === 'video' && detectLinkType(url) !== 'video') {
-      verifyLinkType(url, index);
-    }
-  });
 
-}
-
-// 生成分开的链接列表（保留原函数作为备用）
-function generateLinksList(urls) {
-  const linksList = document.getElementById('linksList');
-  if (!linksList) return;
-  
-  linksList.innerHTML = '';
-  
-  urls.forEach((url, index) => {
-    // 改进的文件类型判断逻辑
-    const linkType = detectLinkType(url);
-    const isVideo = linkType === 'video';
-    const isImage = linkType === 'image';
-    
-    const linkItem = document.createElement('div');
-    linkItem.className = 'link-item';
-    
-    // 生成唯一的链接ID
-    const linkId = `link-${index}`;
-    
-    linkItem.innerHTML = `
-      <span class="link-type-badge ${isVideo ? 'link-type-video' : 'link-type-image'}" id="badge-${index}">
-        ${isVideo ? '🎬 视频' : '📸 图片'} ${index + 1}
-      </span>
-      <a href="${url}" target="_blank" class="link-url" title="点击在新标签页中打开">
-        ${url}
-      </a>
-      <div class="link-actions">
-        <button class="btn btn-sm btn-outline-primary" onclick="copySingleLink('${url}')" title="复制链接">
-          📋 复制链接
-        </button>
-        <button class="btn btn-sm btn-outline-success" onclick="downloadMedia('${url}', ${index})" title="智能下载（视频自动使用代理）">
-          ⬇️ 智能下载
-        </button>
-      </div>
-    `;
-    
-    linksList.appendChild(linkItem);
-    
-    // 异步验证文件类型
-    verifyLinkType(url, index);
-  });
-
-}
 
 // 改进的链接类型检测函数
 function detectLinkType(url) {
@@ -449,24 +351,10 @@ function updateLinkTypeBadge(index, actualType) {
 
 }
 
-// 复制单个链接到剪贴板
-function copySingleLink(url) {
-  navigator.clipboard.writeText(url).then(() => {
-    showToast('📋 链接已复制', 'success');
-  }).catch(err => {
-    // 备用复制方法
-    const tempInput = document.createElement('input');
-    tempInput.value = url;
-    document.body.appendChild(tempInput);
-    tempInput.select();
-    document.execCommand('copy');
-    document.body.removeChild(tempInput);
-    showToast('📋 链接已复制', 'success');
-  });
-}
+
 
 // 直接下载函数 - 视频文件强制使用代理下载
-function downloadMedia(url, index) {
+function downloadMedia(url, index, isBatchDownload = false) {
   try {
     // 尝试获取文件扩展名，改进扩展名检测
     let extension = '';
@@ -508,15 +396,17 @@ function downloadMedia(url, index) {
 
     // 视频文件直接使用代理下载，避免 403 错误
     if (isVideoFile) {
-
-      showToast('🔄 视频文件使用服务器代理下载', 'info');
-      proxyDownload(url, fileName);
+      if (!isBatchDownload) {
+        showToast('🔄 视频文件使用服务器代理下载', 'info');
+      }
+      proxyDownload(url, fileName, isBatchDownload);
       return;
     }
 
     // 图片文件尝试直接下载
-
-    showToast('📥 开始下载图片...', 'info');
+    if (!isBatchDownload) {
+      showToast('📥 开始下载图片...', 'info');
+    }
 
     // 使用 fetch 下载文件
     fetch(url, {
@@ -556,28 +446,34 @@ function downloadMedia(url, index) {
         // 清理内存
         window.URL.revokeObjectURL(downloadUrl);
         
-        showToast('✅ 下载完成', 'success');
+        if (!isBatchDownload) {
+          showToast('✅ 下载完成', 'success');
+        }
       })
       .catch(error => {
         console.error('直接下载失败:', error);
-        showToast(`⚠️ 直接下载失败: ${error.message}，尝试服务器代理下载...`, 'warning');
+        if (!isBatchDownload) {
+          showToast(`⚠️ 直接下载失败: ${error.message}，尝试服务器代理下载...`, 'warning');
+        }
         
         // 如果下载失败，则回退到服务器代理下载
-        proxyDownload(url, fileName);
+        proxyDownload(url, fileName, isBatchDownload);
       });
     
   } catch (error) {
     console.error('下载初始化失败:', error);
-    showToast('❌ 下载失败，尝试服务器代理下载...', 'warning');
+    if (!isBatchDownload) {
+      showToast('❌ 下载失败，尝试服务器代理下载...', 'warning');
+    }
     
     // 如果连初始化都失败，直接使用代理下载
     const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
     const fileName = `douyin_media_${timestamp}_${index + 1}.mp4`;
-    proxyDownload(url, fileName);
+    proxyDownload(url, fileName, isBatchDownload);
   }
 }
 
-function proxyDownload(url, fileName) {
+function proxyDownload(url, fileName, isBatchDownload = false) {
   try {
     // 使用服务器代理下载
 
@@ -594,18 +490,22 @@ function proxyDownload(url, fileName) {
     link.click();
     document.body.removeChild(link);
     
-    showToast('🔄 使用服务器代理下载', 'info');
+    if (!isBatchDownload) {
+      showToast('🔄 使用服务器代理下载', 'info');
+    }
     
   } catch (error) {
     console.error('代理下载也失败:', error);
-    showToast('❌ 代理下载失败，尝试直接打开链接', 'error');
+    if (!isBatchDownload) {
+      showToast('❌ 代理下载失败，尝试直接打开链接', 'error');
+    }
     
     // 最后的回退方案：直接打开链接
-    finalFallbackDownload(url, fileName);
+    finalFallbackDownload(url, fileName, isBatchDownload);
   }
 }
 
-function finalFallbackDownload(url, fileName) {
+function finalFallbackDownload(url, fileName, isBatchDownload = false) {
   // 最终回退方案：直接创建下载链接
   const link = document.createElement('a');
   link.href = url;
@@ -620,29 +520,9 @@ function finalFallbackDownload(url, fileName) {
 
 // 重置界面函数
 function resetInterface() {
-  const rawLinksSection = document.getElementById("rawLinks");
-  const copyDom = document.getElementById("autocopy");
   const mediaPreview = document.getElementById("mediaPreview");
-  const linksList = document.getElementById("linksList");
   
-  if (rawLinksSection) {
-    rawLinksSection.hidden = true;
-    rawLinksSection.style.display = 'none';
-  }
-  if (copyDom) copyDom.hidden = true;
   if (mediaPreview) mediaPreview.style.display = 'none';
-  if (linksList) linksList.innerHTML = '';
-  
-  // 重置原始链接内容区域
-  const rawLinksContent = document.getElementById('rawLinksContent');
-  const rawLinksToggleText = document.getElementById('rawLinksToggleText');
-  if (rawLinksContent) {
-    rawLinksContent.style.display = 'none';
-    rawLinksContent.classList.remove('expanded');
-  }
-  if (rawLinksToggleText) {
-    rawLinksToggleText.textContent = '展开';
-  }
   
   // 重置媒体项目
   currentMediaItems = [];
@@ -667,53 +547,7 @@ function copyTextToClipboard(textToCopy) {
   })
 }
 
-function copyToClipboard() {
-  // 从linksList获取所有链接
-  const linksList = document.getElementById("linksList");
-  if (!linksList) {
-    showToast('❌ 没有找到链接', 'error');
-    return;
-  }
-  
-  const linkItems = linksList.querySelectorAll('.link-item');
-  if (linkItems.length === 0) {
-    showToast('❌ 没有可复制的链接', 'error');
-    return;
-  }
-  
-  const urls = [];
-  linkItems.forEach(item => {
-    const urlSpan = item.querySelector('.link-url');
-    if (urlSpan && urlSpan.textContent) {
-      urls.push(urlSpan.textContent.trim());
-    }
-  });
-  
-  const textToCopy = urls.join(',\n');
-  
-  // 优先使用现代 clipboard API
-  if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(textToCopy)
-      .then(function () {
-        showToast('📋 所有链接已复制', 'success');
-      })
-      .catch(function (error) {
-        fallbackCopyTextToClipboard(textToCopy);
-      });
-  } else {
-    fallbackCopyTextToClipboard(textToCopy);
-  }
-}
 
-function fallbackCopyTextToClipboard(text) {
-  copyTextToClipboard(text).then(function () {
-    showToast('📋 所有链接已复制', 'success');
-
-  })
-  .catch(function (error) {
-    showToast('❌ 复制失败，请手动选择文本复制', 'error');
-  });
-}
 
 // Media preview functionality
 let currentViewMode = 'list';
@@ -858,7 +692,23 @@ function checkMediaType(url, index) {
 
 function displayMediaItems(mediaItems) {
   const mediaContainer = document.getElementById("mediaContainer");
+  const batchDownloadBtn = document.getElementById("batchDownloadBtn");
+  
+  // 保存当前媒体项目到全局变量
+  currentMediaItems = mediaItems;
+  
   mediaContainer.className = `media-container ${currentViewMode}-view`;
+  
+  // 显示/隐藏一键下载按钮 - 文件数量达到10个或以上时显示
+  if (mediaItems.length >= 10) {
+    batchDownloadBtn.style.display = 'inline-block';
+    batchDownloadBtn.style.visibility = 'visible';
+    batchDownloadBtn.style.setProperty('display', 'inline-block', 'important');
+  } else {
+    batchDownloadBtn.style.display = 'none';
+    batchDownloadBtn.style.visibility = 'hidden';
+    batchDownloadBtn.style.setProperty('display', 'none', 'important');
+  }
   
   if (mediaItems.length === 0) {
     mediaContainer.innerHTML = '<div class="no-media">📭 没有找到媒体内容</div>';
@@ -904,9 +754,6 @@ function displayMediaItems(mediaItems) {
         </div>
         ${mediaInfo}
         <div class="media-actions mt-2">
-          <button class="btn btn-sm btn-outline-primary me-2" onclick="event.stopPropagation(); copySingleLink('${item.url}')" title="复制链接">
-            🔗 复制链接
-          </button>
           <button class="btn btn-sm btn-outline-success" onclick="event.stopPropagation(); downloadMedia('${item.url}', ${index})" title="智能下载（视频自动使用代理）">
             ⬇️ 智能下载
           </button>
@@ -990,17 +837,29 @@ async function downloadAllMedia() {
     return;
   }
   
+  const batchDownloadBtn = document.getElementById("batchDownloadBtn");
   const totalItems = currentMediaItems.length;
   downloadProgress = { total: totalItems, completed: 0, inProgress: true };
   
-  showToast(`🚀 开始批量下载 ${totalItems} 个文件...`, 'info');
-  updateBulkDownloadProgress();
+  // 开始下载状态
+  batchDownloadBtn.classList.add('downloading');
+  batchDownloadBtn.innerHTML = '<span class="download-progress-indicator"></span>📥 下载中...';
+  updateDownloadProgress(0);
+  
+  // 显示底部进度条而不是toast
+  showDownloadProgress(totalItems);
   
   for (let i = 0; i < currentMediaItems.length; i++) {
     try {
-      downloadMedia(currentMediaItems[i].url, i);
+      downloadMedia(currentMediaItems[i].url, i, true); // 传入true表示批量下载
       downloadProgress.completed++;
-      updateBulkDownloadProgress();
+      
+      // 更新圆形进度条
+      const progressPercent = (downloadProgress.completed / downloadProgress.total) * 100;
+      updateDownloadProgress(progressPercent);
+      
+      // 更新底部进度条
+      updateBottomProgress(downloadProgress.completed, downloadProgress.total);
       
       // 每次下载后稍微延迟，避免过于频繁的请求
       await new Promise(resolve => setTimeout(resolve, 800));
@@ -1010,8 +869,24 @@ async function downloadAllMedia() {
   }
   
   downloadProgress.inProgress = false;
-  showToast(`🎉 批量下载完成！`, 'success');
-  hideBulkDownloadProgress();
+  
+  // 完成状态
+  batchDownloadBtn.classList.remove('downloading');
+  batchDownloadBtn.innerHTML = '<span class="download-progress-indicator"></span>📥 一键下载';
+  
+  // 显示完成状态并延迟隐藏进度条
+  updateBottomProgress(downloadProgress.total, downloadProgress.total, true);
+  setTimeout(() => {
+    hideDownloadProgress();
+  }, 2000);
+}
+
+// 更新圆形进度条
+function updateDownloadProgress(percent) {
+  const progressIndicator = document.querySelector('.download-progress-indicator');
+  if (progressIndicator) {
+    progressIndicator.style.setProperty('--progress', percent);
+  }
 }
 
 // 批量下载图片
@@ -1042,7 +917,7 @@ async function downloadImages() {
   for (let i = 0; i < imageItems.length; i++) {
     try {
       const originalIndex = currentMediaItems.indexOf(imageItems[i]);
-      downloadMedia(imageItems[i].url, originalIndex);
+      downloadMedia(imageItems[i].url, originalIndex, true); // 批量下载图片
       downloadProgress.completed++;
       updateBulkDownloadProgress();
       
@@ -1086,7 +961,7 @@ async function downloadVideos() {
   for (let i = 0; i < videoItems.length; i++) {
     try {
       const originalIndex = currentMediaItems.indexOf(videoItems[i]);
-      downloadMedia(videoItems[i].url, originalIndex);
+      downloadMedia(videoItems[i].url, originalIndex, true); // 批量下载视频
       downloadProgress.completed++;
       updateBulkDownloadProgress();
       
@@ -1138,6 +1013,51 @@ function hideBulkDownloadProgress() {
 }
 
 function showToast(message, type = 'success') {
+  // 检查是否是移动端
+  const isMobile = window.innerWidth <= 768;
+  
+  if (isMobile) {
+    // 移动端使用底部通知
+    showMobileToast(message, type);
+  } else {
+    // 桌面端使用右上角通知
+    showDesktopToast(message, type);
+  }
+}
+
+function showMobileToast(message, type = 'success') {
+  // 创建移动端toast容器（如果不存在）
+  let mobileToastContainer = document.getElementById('mobile-toast-container');
+  if (!mobileToastContainer) {
+    mobileToastContainer = document.createElement('div');
+    mobileToastContainer.id = 'mobile-toast-container';
+    document.body.appendChild(mobileToastContainer);
+  }
+  
+  const toast = document.createElement('div');
+  toast.className = `mobile-toast ${type}`;
+  toast.textContent = message;
+  
+  // 添加到容器
+  mobileToastContainer.appendChild(toast);
+  
+  // 触发动画
+  setTimeout(() => {
+    toast.classList.add('show');
+  }, 100);
+  
+  // 自动移除
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => {
+      if (mobileToastContainer.contains(toast)) {
+        mobileToastContainer.removeChild(toast);
+      }
+    }, 300);
+  }, 2500); // 移动端显示时间稍短
+}
+
+function showDesktopToast(message, type = 'success') {
   // 创建toast容器（如果不存在）
   let toastContainer = document.getElementById('toast-container');
   if (!toastContainer) {
@@ -1291,32 +1211,6 @@ document.addEventListener("DOMContentLoaded", function() {
     listBtn.classList.add('active');
   }
 });
-
-// Raw links toggle functionality
-function toggleRawLinks() {
-  const content = document.getElementById('rawLinksContent');
-  const toggleText = document.getElementById('rawLinksToggleText');
-  const copyButton = document.getElementById('autocopy');
-  
-  if (!content || !toggleText) {
-    console.error('Raw links elements not found');
-    return;
-  }
-  
-  if (content.style.display === 'none') {
-    content.style.display = 'block';
-    content.classList.add('expanded');
-    toggleText.textContent = '收起';
-    // 展开时显示一键复制按钮
-    if (copyButton) copyButton.hidden = false;
-  } else {
-    content.style.display = 'none';
-    content.classList.remove('expanded');
-    toggleText.textContent = '展开';
-    // 收起时隐藏一键复制按钮
-    if (copyButton) copyButton.hidden = true;
-  }
-}
 
 // 移动端全屏预览功能
 function enableMobileFullscreen() {
@@ -2055,4 +1949,47 @@ window.addEventListener('beforeunload', function() {
     cookieManager.destroy();
   }
 });
+
+// 显示下载进度条
+function showDownloadProgress(totalFiles) {
+  const progressBar = document.getElementById('download-progress-bar');
+  const progressTotal = document.getElementById('progress-total');
+  const progressCurrent = document.getElementById('progress-current');
+  const progressFill = document.getElementById('progress-fill');
+  
+  if (progressBar) {
+    progressTotal.textContent = totalFiles;
+    progressCurrent.textContent = '0';
+    progressFill.style.width = '0%';
+    
+    progressBar.classList.add('show');
+  }
+}
+
+// 更新底部进度条
+function updateBottomProgress(current, total, isComplete = false) {
+  const progressCurrent = document.getElementById('progress-current');
+  const progressFill = document.getElementById('progress-fill');
+  const progressText = document.querySelector('.progress-text');
+  
+  if (progressCurrent && progressFill) {
+    progressCurrent.textContent = current;
+    const percentage = (current / total) * 100;
+    progressFill.style.width = percentage + '%';
+    
+    if (isComplete) {
+      progressText.textContent = '🎉 下载完成！';
+    } else {
+      progressText.textContent = '📥 批量下载中...';
+    }
+  }
+}
+
+// 隐藏下载进度条
+function hideDownloadProgress() {
+  const progressBar = document.getElementById('download-progress-bar');
+  if (progressBar) {
+    progressBar.classList.remove('show');
+  }
+}
 

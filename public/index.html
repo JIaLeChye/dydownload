@@ -61,15 +61,22 @@
       <div class="row justify-content-center">
         <div class="col-12" id="mediaPreviewColumn">
           <div id="mediaPreview" class="mt-4" hidden>
-            <div class="d-flex justify-content-between align-items-center mb-3">
-              <h5 class="mb-0">📱 内容预览</h5>
-              <div class="btn-group" role="group">
-                <button type="button" class="btn btn-sm btn-outline-primary" onclick="toggleView('list')">
-                  📋 列表
+            <div class="d-flex align-items-center justify-content-center mb-3" style="gap: 12px;">
+              <h5 class="mb-0 flex-shrink-0">📱 内容预览</h5>
+              <div class="d-flex align-items-center" style="gap: 5px;">
+                <!-- 一键下载按钮 - 仅在文件数量达到10个或以上时显示 -->
+                <button type="button" class="btn btn-sm btn-success flex-shrink-0" id="batchDownloadBtn" style="display: none;" onclick="downloadAllMedia()">
+                  <span class="download-progress-indicator"></span>
+                  📥 一键下载
                 </button>
-                <button type="button" class="btn btn-sm btn-outline-primary" onclick="toggleView('grid')">
-                  🔲 网格
-                </button>
+                <div class="btn-group flex-shrink-0" role="group">
+                  <button type="button" class="btn btn-sm btn-outline-primary" onclick="toggleView('list')">
+                    📋 列表
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline-primary" onclick="toggleView('grid')">
+                    🔲 网格
+                  </button>
+                </div>
               </div>
             </div>
             <div id="mediaContainer" class="media-container">
@@ -78,48 +85,36 @@
           </div>
         </div>
       </div>
-      
-      <!-- Raw Links Section - Centered like form -->
-      <div class="row justify-content-center">
-        <div class="col-12 col-md-8 col-lg-6">
-          <div id="rawLinks" class="mt-4" hidden>
-            <div class="d-flex justify-content-between align-items-center mb-3">
-              <h5 class="mb-0">🔗 原始链接</h5>
-              <button class="btn btn-sm btn-outline-secondary" onclick="toggleRawLinks()">
-                <span id="rawLinksToggleText">展开</span>
-              </button>
-            </div>
-            <div id="rawLinksContent" class="raw-links-content" style="display: none;">
-              <!-- 新的链接列表显示区域 -->
-              <div id="linksList" class="links-list">
-                <!-- 链接将通过JavaScript动态生成 -->
-              </div>
-              
-              <!-- 一键复制按钮放在内容底部 -->
-              <div class="media-actions mt-3">
-                <button
-                  onclick="copyToClipboard()"
-                  id="autocopy"
-                  class="btn btn-lg btn-primary"
-                  data-clipboard-target="#result"
-                  hidden
-                >
-                  📋 一键复制全部链接
-                </button>
-              </div>
-            </div>
-            </div>
+    </div>
+    
+    <!-- 下载进度条 -->
+    <div id="download-progress-bar">
+      <div class="progress-content">
+        <div class="progress-info">
+          <span class="progress-text">📥 批量下载中...</span>
+          <span class="progress-stats">
+            <span id="progress-current">0</span>/<span id="progress-total">0</span>
+          </span>
+        </div>
+        <div class="progress-bar-wrapper">
+          <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill"></div>
           </div>
         </div>
+        <button class="progress-close" onclick="hideDownloadProgress()" title="隐藏进度条">
+          ✕
+        </button>
       </div>
     </div>
     
-    <!-- Lightbox for image viewing -->
-    <div id="lightbox" class="lightbox" style="display: none;">
+    <!-- Lightbox Modal -->
+    <div id="lightbox" class="lightbox">
       <span class="lightbox-close">&times;</span>
       <span class="lightbox-nav lightbox-prev">❮</span>
       <span class="lightbox-nav lightbox-next">❯</span>
-      <img id="lightbox-img" src="" alt="">
+      <div class="lightbox-content">
+        <img id="lightbox-img" src="" alt="">
+      </div>
     </div>
     
     <!-- Cookie Update Modal -->

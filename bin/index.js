@@ -515,7 +515,24 @@ class Scraper {
             noWatermarkUrls = unique;
         } else {
             // 图片分享
+            console.log('📸 正在获取图片数据: \n')
             let images = videoData?.aweme_detail?.images
+            
+            // 打印图片URL信息
+            if (images && images.length > 0) {
+                console.log('   图片数量:', images.length);
+                console.log('   图片URL列表:');
+                images.forEach((img, index) => {
+                    if (img?.url_list && img.url_list.length > 0) {
+                        const maxSizePicIndex = img.url_list.length - 1;
+                        const imageUrl = img.url_list[maxSizePicIndex];
+                        console.log(`   ${index + 1}. ${imageUrl.substring(0, 120)}...`);
+                    }
+                });
+            } else {
+                console.log('⚠️ 未找到图片数据');
+            }
+            
             noWatermarkUrls = images.map(i => {
                 if (!i?.url_list) return null
                 const maxSizePicIndex = i?.url_list.length - 1
