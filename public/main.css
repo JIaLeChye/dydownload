@@ -2,25 +2,37 @@
 :root {
   --bg-color: #ffffff;
   --text-color: #000000;
+  --text-secondary: #6c757d;
   --card-bg: #f8f9fa;
+  --secondary-bg: #e9ecef;
   --border-color: #dee2e6;
   --input-bg: #ffffff;
   --btn-primary-bg: #007bff;
   --btn-primary-border: #007bff;
   --btn-success-bg: #28a745;
   --btn-success-border: #28a745;
+  --primary-color: #007bff;
+  --primary-hover: #0056b3;
+  --accent-color: #17a2b8;
+  --primary-color-rgb: 0, 123, 255;
 }
 
 [data-theme="dark"] {
   --bg-color: #121212;
   --text-color: #ffffff;
+  --text-secondary: #adb5bd;
   --card-bg: #1e1e1e;
+  --secondary-bg: #2d2d2d;
   --border-color: #333333;
   --input-bg: #2d2d2d;
   --btn-primary-bg: #0d6efd;
   --btn-primary-border: #0d6efd;
   --btn-success-bg: #198754;
   --btn-success-border: #198754;
+  --primary-color: #0d6efd;
+  --primary-hover: #0b5ed7;
+  --accent-color: #20c997;
+  --primary-color-rgb: 13, 110, 253;
 }
 
 body {
@@ -28,6 +40,7 @@ body {
   color: var(--text-color);
   transition: background-color 0.3s ease, color 0.3s ease;
   overflow-x: hidden;
+  min-width: 320px; /* 确保最小宽度，防止过度压缩 */
 }
 
 .form-control {
@@ -120,6 +133,8 @@ body {
   padding: 1.5rem;
   margin-top: 1rem;
   transition: all 0.3s ease;
+  overflow: hidden; /* 防止内容溢出 */
+  word-wrap: break-word; /* 确保长文本换行 */
 }
 
 .media-grid {
@@ -1095,7 +1110,10 @@ button, .btn {
   background-color: var(--input-bg);
   max-height: 80vh;
   overflow-y: auto;
+  overflow-x: hidden;
   scroll-behavior: smooth;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .media-item {
@@ -1117,6 +1135,8 @@ button, .btn {
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 1.5rem;
   padding: 1rem;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 @media (min-width: 768px) {
@@ -1290,13 +1310,12 @@ button, .btn {
 .lightbox {
   display: none;
   position: fixed;
-  z-index: 2000;
+  z-index: 1998;
   left: 0;
   top: 0;
   width: 100%;
   height: 100%;
   background-color: rgba(0, 0, 0, 0.9);
-  cursor: pointer;
 }
 
 .lightbox.active {
@@ -1312,6 +1331,8 @@ button, .btn {
   display: flex;
   align-items: center;
   justify-content: center;
+  pointer-events: none;
+  z-index: 1;
 }
 
 .lightbox-content img {
@@ -1319,26 +1340,35 @@ button, .btn {
   max-height: 100%;
   border-radius: 8px;
   object-fit: contain;
+  pointer-events: none;
 }
 
 .lightbox img {
   max-width: 90%;
   max-height: 90%;
   border-radius: 8px;
+  pointer-events: none;
+  position: relative;
+  z-index: 1;
 }
 
 .lightbox-close {
-  position: absolute;
+  position: fixed;
   top: 20px;
   right: 30px;
   color: white;
   font-size: 2rem;
   font-weight: bold;
   cursor: pointer;
+  z-index: 2100;
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(255, 255, 255, 0.3);
+  user-select: none;
 }
 
 .lightbox-nav {
-  position: absolute;
+  position: fixed;
   top: 50%;
   transform: translateY(-50%);
   color: white;
@@ -1349,6 +1379,10 @@ button, .btn {
   padding: 1rem;
   background: rgba(0, 0, 0, 0.5);
   border-radius: 50%;
+  z-index: 2100;
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(255, 255, 255, 0.3);
 }
 
 .lightbox-prev {
@@ -1469,7 +1503,7 @@ button, .btn {
     bottom: 20px;
     left: 10px;
     right: 10px;
-    z-index: 1500;
+    z-index: 99999;
     pointer-events: none;
   }
   
@@ -1480,7 +1514,7 @@ button, .btn {
     padding: 0.75rem 1rem;
     border-radius: 8px;
     font-size: 0.85rem;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
     transform: translateY(100%);
     transition: transform 0.3s ease;
     margin-top: 0.5rem;
@@ -1494,22 +1528,26 @@ button, .btn {
   
   .mobile-toast.success {
     border-color: #28a745;
-    background: rgba(40, 167, 69, 0.1);
+    background: rgba(40, 167, 70, 0.4);
+    color: white;
   }
   
   .mobile-toast.error {
     border-color: #dc3545;
-    background: rgba(220, 53, 69, 0.1);
+    background: rgba(220, 53, 69, 0.4);
+    color: white;
   }
   
   .mobile-toast.warning {
     border-color: #ffc107;
-    background: rgba(255, 193, 7, 0.1);
+    background: rgba(255, 193, 7, 0.4);
+    color: #212529;
   }
   
   .mobile-toast.info {
     border-color: #17a2b8;
-    background: rgba(23, 162, 184, 0.1);
+    background: rgba(23, 162, 184, 0.4);
+    color: white;
   }
 }
 
@@ -1608,13 +1646,25 @@ button, .btn {
   
   .lightbox-nav {
     font-size: 1.5rem;
-    padding: 0.5rem;
+    padding: 1rem;
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10003;
   }
   
   .lightbox-close {
     font-size: 1.5rem;
     top: 10px;
     right: 15px;
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10003;
   }
 }
 
@@ -1864,7 +1914,7 @@ button, .btn {
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: 2000;
+    z-index: 1999;
     background: var(--bg-color);
     padding: 1rem;
     margin: 0 !important;
@@ -1874,34 +1924,32 @@ button, .btn {
   }
   
   #mediaPreview.fullscreen-mobile .media-container {
-    height: calc(100vh - 220px); /* 进一步增加空间给标题栏的上下边距 */
-    max-height: calc(100vh - 220px); /* 确保不会超出 */
+    height: calc(100vh - 180px);
+    max-height: calc(100vh - 180px);
     border: none;
     border-radius: 0;
     padding: 0;
     background: transparent;
-    overflow-y: auto; /* 确保内容可以滚动 */
+    overflow-y: auto;
   }
   
   /* 全屏模式下的标题栏 */
   #mediaPreview.fullscreen-mobile .d-flex {
     position: sticky;
-    top: 0; /* 保持顶部对齐 */
+    top: 0;
     background: var(--bg-color);
-    padding: 1rem 0; /* 恢复原来的padding让标题栏有呼吸空间 */
+    padding: 0.5rem 0;
     border-bottom: 1px solid var(--border-color);
-    margin-bottom: 1rem; /* 恢复原来的margin */
-    margin-top: 1rem; /* 添加上边距让整体下移 */
-    z-index: 2001;
+    margin-bottom: 0.5rem;
+    z-index: 1;
   }
   
-  /* 全屏模式下的标题样式 */
+  /* 全屏模式下的标题样式 - 加大字体 */
   #mediaPreview.fullscreen-mobile .d-flex.justify-content-between h5 {
-    font-size: 22px !important; /* 调整为22px */
+    font-size: 1.5rem !important;
     font-weight: 600 !important;
     margin: 0 !important;
-    display: inline-block !important; /* 改为inline-block，和按钮一样的display方式 */
-    vertical-align: middle !important; /* 垂直居中对齐基线 */
+    line-height: 1.2 !important;
   }
   
   /* 全屏模式下的按钮样式 */
@@ -1962,7 +2010,7 @@ button, .btn {
     position: fixed !important;
     top: 1rem !important; /* 恢复原来的间距 */
     left: 1rem !important; /* 恢复原来的间距 */
-    z-index: 2002 !important;
+    z-index: 10 !important;
     background: rgba(0, 0, 0, 0.7) !important;
     color: white !important;
     border: none !important;
@@ -2212,56 +2260,24 @@ button, .btn {
   border: 2px solid transparent;
   transition: all 0.3s ease;
   background-clip: padding-box;
+  /* 在移动端确保与其他按钮一致的大小 */
+}
+
+@media (max-width: 768px) {
+  #batchDownloadBtn {
+    border-radius: 4px !important;
+    border-width: 1px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  #batchDownloadBtn {
+    border-radius: 3px !important;
+  }
 }
 
 /* 圆形进度条指示器 */
-.download-progress-indicator {
-  position: absolute;
-  top: -2px;
-  left: -2px;
-  right: -2px;
-  bottom: -2px;
-  border-radius: 6px;
-  background: conic-gradient(
-    from 0deg at 50% 50%,
-    #28a745 0deg,
-    #28a745 calc(var(--progress, 0) * 3.6deg),
-    transparent calc(var(--progress, 0) * 3.6deg),
-    transparent 360deg
-  );
-  opacity: 0;
-  transition: opacity 0.3s ease;
-  z-index: -1;
-}
 
-/* 下载进行中时显示进度条 */
-#batchDownloadBtn.downloading .download-progress-indicator {
-  opacity: 1;
-}
-
-/* 下载进行中时的按钮状态 */
-#batchDownloadBtn.downloading {
-  background: rgba(40, 167, 69, 0.1);
-  border-color: transparent;
-  color: #28a745;
-  pointer-events: none;
-}
-
-/* 深色主题适配 */
-[data-theme="dark"] .download-progress-indicator {
-  background: conic-gradient(
-    from 0deg at 50% 50%,
-    #51cf66 0deg,
-    #51cf66 calc(var(--progress, 0) * 3.6deg),
-    transparent calc(var(--progress, 0) * 3.6deg),
-    transparent 360deg
-  );
-}
-
-[data-theme="dark"] #batchDownloadBtn.downloading {
-  background: rgba(81, 207, 102, 0.1);
-  color: #51cf66;
-}
 
 /* 按钮悬停效果 */
 #batchDownloadBtn:hover:not(.downloading) {
@@ -2269,109 +2285,93 @@ button, .btn {
   box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
 }
 
-/* 移动端优化 - 保持按钮原始大小，通过布局调整防止溢出 */
-@media (max-width: 768px) {
-  /* 确保内容预览标题栏在移动端的正确布局 */
-  #mediaPreview .d-flex.justify-content-between {
-    flex-wrap: nowrap !important;
-    gap: 8px;
+/* 中小屏幕优化 - 防止按钮溢出 */
+@media (max-width: 1200px) {
+  /* 内容预览标题栏布局 - 改为垂直排列 */
+  #mediaPreview .d-flex.align-items-center.justify-content-center {
+    flex-direction: column !important;
+    gap: 8px !important;
     align-items: center !important;
-    width: 100%;
-    overflow: hidden;
+    max-width: 100% !important;
+    overflow: hidden !important;
   }
   
-  #mediaPreview .d-flex.justify-content-between h5 {
-    flex: 1 1 auto;
-    margin-right: 10px;
-    margin-bottom: 0 !important;
-    line-height: 1; /* 减少到1让文字更紧凑 */
+  #mediaPreview .d-flex.align-items-center.justify-content-center h5 {
+    text-align: center !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    flex-shrink: 0 !important;
+    width: 100% !important;
+    display: block !important;
+    align-self: center !important;
+    font-size: 1.25rem !important;
+    font-weight: 600 !important;
+  }
+  
+  #mediaPreview .d-flex.align-items-center[style*="gap: 5px"] {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    justify-content: center !important;
+    align-items: center !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+  }
+  
+  /* 统一按钮样式 */
+  #mediaPreview .btn,
+  #mediaPreview #batchDownloadBtn,
+  #mediaPreview #downloadSettingsBtn,
+  #mediaPreview .btn-group .btn {
+    font-size: 0.8rem !important;
+    padding: 0.25rem 0.5rem !important;
+    white-space: nowrap !important;
+    min-height: 32px !important;
+    max-height: 32px !important;
+    height: 32px !important;
+    line-height: 1.2 !important;
+    border-radius: 4px !important;
+    box-sizing: border-box !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    vertical-align: top !important;
+  }
+  
+  /* 按钮组圆角处理 */
+  #mediaPreview .btn-group {
+    flex-shrink: 0 !important;
+  }
+  
+  #mediaPreview .btn-group .btn:first-child {
+    border-top-right-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+  }
+  
+  #mediaPreview .btn-group .btn:last-child {
+    border-top-left-radius: 0 !important;
+    border-bottom-left-radius: 0 !important;
+  }
+  
+  /* 标题样式 */
+  #mediaPreview h5 {
+    white-space: nowrap;
+    font-size: 22px;
+    font-weight: 600;
+    height: 32px;
     display: flex;
     align-items: center;
-    min-width: 0; /* 允许标题收缩 */
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 22px; /* 调整为22px */
-    font-weight: 600; /* 稍微加粗 */
-    height: 32px; /* 设置固定高度与按钮一致 */
-    align-items: center; /* 垂直居中对齐 */
-  }
-  
-  #mediaPreview .d-flex.align-items-center {
-    flex: 0 0 auto;
-    flex-wrap: nowrap !important;
-    align-items: center !important;
-    min-width: 0;
-    border: none !important; /* 移除容器边框 */
-    background: transparent !important; /* 移除容器背景 */
-    padding-left: 0 !important; /* 只调整左内边距 */
-    padding-right: 0 !important; /* 只调整右内边距 */
-    margin-left: 0 !important; /* 只调整左外边距 */
-    margin-right: 0 !important; /* 只调整右外边距 */
-  }
-  
-  /* 保持按钮原始大小但缩小边框 */
-  #batchDownloadBtn {
-    white-space: nowrap;
-    display: inline-flex !important;
-    align-items: center !important;
-    margin-bottom: 0 !important;
-    border-width: 0.5px !important; /* 极小边框 */
-    padding: 4px 8px !important; /* 稍微缩小内边距 */
-    height: 32px !important; /* 设置固定高度 */
-    line-height: 1 !important;
-  }
-  
-  .btn-group {
-    display: inline-flex !important;
-    align-items: center !important;
-    min-width: 0;
-    border: none !important; /* 移除按钮组边框 */
-    background: transparent !important; /* 移除按钮组背景 */
-    padding-left: 0 !important; /* 只调整左内边距 */
-    padding-right: 0 !important; /* 只调整右内边距 */
-    margin-left: 0 !important; /* 只调整左外边距 */
-    margin-right: 0 !important; /* 只调整右外边距 */
-  }
-  
-  .btn-group .btn {
-    margin-bottom: 0 !important;
-    border-width: 0.5px !important; /* 极小边框 */
-    padding: 4px 8px !important; /* 稍微缩小内边距 */
-    height: 32px !important; /* 设置固定高度 */
-    line-height: 1 !important;
-  }
-  
-  /* 移动端全局按钮边框设置 */
-  button, .btn {
-    border-width: 0.5px !important; /* 确保移动端也是极小边框 */
   }
 }
 
-/* 超小屏幕优化 - 调整布局而不是按钮大小 */
-@media (max-width: 480px) {
-  #mediaPreview .d-flex.justify-content-between {
-    gap: 6px; /* 稍微减少间距 */
-  }
-  
-  #mediaPreview .d-flex.justify-content-between h5 {
-    margin-right: 8px;
-    font-size: 22px; /* 保持22px一致 */
-    height: 32px; /* 保持一致的高度 */
-    line-height: 1; /* 保持一致的行高 */
-  }
-  
-  /* 保持按钮原始大小，不修改font-size和padding */
-}
 
-/* 防止整体页面出现水平滚动条 */
+
+/* 移动端布局优化 */
 @media (max-width: 768px) {
   #mediaPreview {
     width: 100%;
     max-width: 100%;
     overflow-x: hidden;
-    padding-left: 0;
-    padding-right: 0;
+    padding: 1rem;
   }
   
   .container {
@@ -2381,22 +2381,324 @@ button, .btn {
     overflow-x: hidden;
   }
   
-  /* 媒体预览容器内边距调整 */
-  #mediaPreview .d-flex.justify-content-between {
-    padding-left: 5px;
-    padding-right: 5px;
+  /* 确保按钮容器正确换行和居中 */
+  #mediaPreview .d-flex.align-items-center[style*="gap: 5px"] {
+    width: 100% !important;
+    justify-content: center !important;
   }
 }
 
-/* 特别小的屏幕进一步压缩容器边距 */
+/* 特别小的屏幕进一步优化 */
 @media (max-width: 480px) {
   .container {
     padding-left: 8px !important;
     padding-right: 8px !important;
   }
   
-  #mediaPreview .d-flex.justify-content-between {
-    padding-left: 2px;
-    padding-right: 2px;
+  #mediaPreview .d-flex.align-items-center[style*="gap: 5px"] {
+    gap: 6px !important;
+  }
+  
+  /* 小屏幕按钮样式 */
+  #mediaPreview .btn,
+  #mediaPreview #batchDownloadBtn,
+  #mediaPreview #downloadSettingsBtn,
+  #mediaPreview .btn-group .btn {
+    font-size: 0.75rem !important;
+    padding: 0.2rem 0.4rem !important;
+    min-height: 28px !important;
+    max-height: 28px !important;
+    height: 28px !important;
+    line-height: 1.1 !important;
+    border-radius: 3px !important;
+  }
+  
+  #mediaPreview h5 {
+    font-size: 1rem !important;
+  }
+}
+
+/* 下载设置面板样式 */
+.download-settings-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(5px);
+  z-index: 10001;
+  animation: fadeIn 0.3s ease;
+}
+
+.download-settings-modal.show {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.download-settings-content {
+  background: var(--card-bg);
+  border-radius: 12px;
+  width: 90%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.3s ease;
+}
+
+.download-settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.download-settings-header h4 {
+  margin: 0;
+  color: var(--text-color);
+}
+
+.download-settings-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: var(--text-color);
+  cursor: pointer;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.download-settings-close:hover {
+  background: var(--border-color);
+}
+
+.download-settings-body {
+  padding: 20px;
+}
+
+.setting-group {
+  margin-bottom: 24px;
+}
+
+.setting-group label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 8px;
+  color: var(--text-color);
+}
+
+.setting-input-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.setting-slider {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border-color);
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+}
+
+.setting-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--primary-color);
+  cursor: pointer;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2), 0 0 0 2px white;
+  border: 2px solid var(--primary-color);
+  transition: all 0.2s ease;
+  position: relative;
+  z-index: 2;
+}
+
+.setting-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25), 0 0 0 3px white, 0 0 0 4px var(--primary-color);
+}
+
+.setting-slider::-webkit-slider-thumb:active {
+  transform: scale(1.25);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3), 0 0 0 3px white, 0 0 0 5px var(--primary-color);
+}
+
+.setting-slider::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--primary-color);
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s ease;
+  position: relative;
+  z-index: 2;
+}
+
+.setting-slider::-moz-range-thumb:hover {
+  transform: scale(1.15);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
+}
+
+.setting-slider::-moz-range-thumb:active {
+  transform: scale(1.25);
+}
+
+.setting-slider::-webkit-slider-track {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border-color);
+  position: relative;
+}
+
+.setting-slider::-moz-range-track {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border-color);
+  border: none;
+  position: relative;
+}
+
+.setting-slider:focus {
+  outline: none;
+}
+
+.setting-slider:focus::-webkit-slider-thumb {
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2), 0 0 0 2px white, 0 0 0 4px var(--primary-color);
+}
+
+.setting-slider:focus::-moz-range-thumb {
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2), 0 0 0 2px var(--primary-color);
+}
+
+.setting-input-group span {
+  min-width: 60px;
+  text-align: center;
+  font-weight: 500;
+  color: var(--primary-color);
+  background: rgba(var(--primary-color-rgb), 0.1);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.setting-help {
+  color: var(--text-secondary);
+  font-size: 0.85em;
+  line-height: 1.4;
+}
+
+.setting-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.setting-checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary-color);
+}
+
+.setting-checkbox label {
+  margin: 0;
+  cursor: pointer;
+  font-weight: normal;
+}
+
+.download-settings-footer {
+  padding: 20px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.settings-btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.settings-btn-secondary {
+  background: var(--secondary-bg);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+}
+
+.settings-btn-secondary:hover {
+  background: var(--border-color);
+}
+
+.settings-btn-primary {
+  background: var(--primary-color);
+  color: white;
+}
+
+.settings-btn-primary:hover {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(30px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .download-settings-content {
+    width: 95%;
+    margin: 10px;
+  }
+  
+  .download-settings-header,
+  .download-settings-body,
+  .download-settings-footer {
+    padding: 16px;
+  }
+  
+  .setting-group {
+    margin-bottom: 20px;
+  }
+  
+  .download-settings-footer {
+    flex-direction: column;
+  }
+  
+  .settings-btn {
+    width: 100%;
   }
 }

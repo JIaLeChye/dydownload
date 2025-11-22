@@ -64,10 +64,13 @@
             <div class="d-flex align-items-center justify-content-center mb-3" style="gap: 12px;">
               <h5 class="mb-0 flex-shrink-0">📱 内容预览</h5>
               <div class="d-flex align-items-center" style="gap: 5px;">
-                <!-- 一键下载按钮 - 仅在文件数量达到10个或以上时显示 -->
+                <!-- 一键下载按钮 - 仅在文件数量达到2个或以上时显示 -->
                 <button type="button" class="btn btn-sm btn-success flex-shrink-0" id="batchDownloadBtn" style="display: none;" onclick="downloadAllMedia()">
-                  <span class="download-progress-indicator"></span>
                   📥 一键下载
+                </button>
+                <!-- 下载设置按钮 -->
+                <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="downloadSettingsBtn" style="display: none;" onclick="toggleDownloadSettings()">
+                  ⚙️ 设置
                 </button>
                 <div class="btn-group flex-shrink-0" role="group">
                   <button type="button" class="btn btn-sm btn-outline-primary" onclick="toggleView('list')">
@@ -193,6 +196,62 @@
           <button type="button" class="cookie-btn cookie-btn-primary" id="cookie-save-btn">
             更新Cookie
           </button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 下载设置面板 -->
+    <div id="download-settings-modal" class="download-settings-modal">
+      <div class="download-settings-content">
+        <div class="download-settings-header">
+          <h4>⚙️ 下载设置</h4>
+          <button type="button" class="download-settings-close" onclick="closeDownloadSettings()">×</button>
+        </div>
+        <div class="download-settings-body">
+          <div class="setting-group">
+            <label for="max-concurrent">最大并发下载数:</label>
+            <div class="setting-input-group">
+              <input type="range" id="max-concurrent" min="1" max="10" value="3" class="setting-slider">
+              <span id="max-concurrent-value">3</span>
+            </div>
+            <small class="setting-help">同时下载的最大文件数量</small>
+          </div>
+          
+          <div class="setting-group">
+            <label for="download-delay">下载间隔 (毫秒):</label>
+            <div class="setting-input-group">
+              <input type="range" id="download-delay" min="100" max="3000" value="500" step="100" class="setting-slider">
+              <span id="download-delay-value">500ms</span>
+            </div>
+            <small class="setting-help">每个下载任务之间的延迟时间</small>
+          </div>
+          
+          <div class="setting-group">
+            <label for="retry-attempts">重试次数:</label>
+            <div class="setting-input-group">
+              <input type="range" id="retry-attempts" min="1" max="10" value="3" class="setting-slider">
+              <span id="retry-attempts-value">3</span>
+            </div>
+            <small class="setting-help">下载失败时的重试次数</small>
+          </div>
+          
+          <div class="setting-group">
+            <div class="setting-checkbox">
+              <input type="checkbox" id="auto-retry" checked>
+              <label for="auto-retry">自动重试失败的下载</label>
+            </div>
+          </div>
+          
+          <div class="setting-group">
+            <div class="setting-checkbox">
+              <input type="checkbox" id="detailed-progress" checked>
+              <label for="detailed-progress">显示详细进度信息</label>
+            </div>
+          </div>
+        </div>
+        <div class="download-settings-footer">
+          <button type="button" class="settings-btn settings-btn-secondary" onclick="resetDownloadSettings()">重置默认</button>
+          <button type="button" class="settings-btn settings-btn-primary" onclick="saveDownloadSettings()">保存设置</button>
         </div>
       </div>
     </div>
