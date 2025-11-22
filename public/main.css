@@ -1310,7 +1310,7 @@ button, .btn {
 .lightbox {
   display: none;
   position: fixed;
-  z-index: 1998;
+  z-index: 2100;
   left: 0;
   top: 0;
   width: 100%;
@@ -1503,7 +1503,7 @@ button, .btn {
     bottom: 20px;
     left: 10px;
     right: 10px;
-    z-index: 99999;
+    z-index: 20000;
     pointer-events: none;
   }
   
