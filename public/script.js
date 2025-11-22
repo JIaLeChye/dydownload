@@ -693,14 +693,15 @@ function checkMediaType(url, index) {
 function displayMediaItems(mediaItems) {
   const mediaContainer = document.getElementById("mediaContainer");
   const batchDownloadBtn = document.getElementById("batchDownloadBtn");
+  const downloadSettingsBtn = document.getElementById("downloadSettingsBtn");
   
   // 保存当前媒体项目到全局变量
   currentMediaItems = mediaItems;
   
   mediaContainer.className = `media-container ${currentViewMode}-view`;
   
-  // 显示/隐藏一键下载按钮 - 文件数量达到10个或以上时显示
-  if (mediaItems.length >= 10) {
+  // 显示/隐藏一键下载按钮 - 文件数量达到2个或以上时显示
+  if (mediaItems.length >= 2) {
     batchDownloadBtn.style.display = 'inline-block';
     batchDownloadBtn.style.visibility = 'visible';
     batchDownloadBtn.style.setProperty('display', 'inline-block', 'important');
@@ -708,6 +709,17 @@ function displayMediaItems(mediaItems) {
     batchDownloadBtn.style.display = 'none';
     batchDownloadBtn.style.visibility = 'hidden';
     batchDownloadBtn.style.setProperty('display', 'none', 'important');
+  }
+  
+  // 显示/隐藏下载设置按钮 - 有媒体内容时显示
+  if (mediaItems.length > 0) {
+    downloadSettingsBtn.style.display = 'inline-block';
+    downloadSettingsBtn.style.visibility = 'visible';
+    downloadSettingsBtn.style.setProperty('display', 'inline-block', 'important');
+  } else {
+    downloadSettingsBtn.style.display = 'none';
+    downloadSettingsBtn.style.visibility = 'hidden';
+    downloadSettingsBtn.style.setProperty('display', 'none', 'important');
   }
   
   if (mediaItems.length === 0) {
@@ -825,43 +837,774 @@ let downloadProgress = {
   inProgress: false
 };
 
-// 批量下载所有媒体
+// 增强的下载状态管理系统
+class DownloadManager extends EventTarget {
+  constructor() {
+    super();
+    this.queue = [];
+    this.inProgress = false;
+    this.maxConcurrent = 3; // 最大并发下载数
+    this.activeDownloads = new Map();
+    this.completed = 0;
+    this.failed = 0;
+    this.statistics = {
+      totalBytes: 0,
+      downloadedBytes: 0,
+      speed: 0,
+      startTime: null,
+      estimatedTimeLeft: 0
+    };
+    this.retryAttempts = 3;
+    this.downloadDelay = 500; // 下载间隔（毫秒）
+  }
+
+  // 添加下载任务到队列
+  addToQueue(downloadTask) {
+    const task = {
+      id: Date.now() + Math.random(),
+      ...downloadTask,
+      status: 'pending',
+      retries: 0,
+      progress: 0,
+      speed: 0,
+      error: null
+    };
+    
+    this.queue.push(task);
+    this.dispatchEvent(new CustomEvent('taskAdded', { detail: task }));
+    return task.id;
+  }
+
+  // 开始批量下载
+  async startBatchDownload(mediaItems) {
+    if (this.inProgress) {
+      throw new Error('下载任务正在进行中');
+    }
+
+    this.inProgress = true;
+    this.completed = 0;
+    this.failed = 0;
+    this.queue = [];
+    this.statistics = {
+      ...this.statistics,
+      startTime: Date.now(),
+      totalBytes: 0,
+      downloadedBytes: 0
+    };
+
+    // 添加所有任务到队列
+    mediaItems.forEach((item, index) => {
+      this.addToQueue({
+        url: item.url,
+        index,
+        type: item.type,
+        filename: this.generateFilename(item, index)
+      });
+    });
+
+    this.dispatchEvent(new CustomEvent('batchStarted', { 
+      detail: { total: this.queue.length } 
+    }));
+
+    // 开始处理队列
+    await this.processQueue();
+  }
+
+  // 处理下载队列
+  async processQueue() {
+    const activePromises = [];
+
+    while (this.queue.length > 0 || activePromises.length > 0) {
+      // 启动新的下载任务（不超过最大并发数）
+      while (this.queue.length > 0 && activePromises.length < this.maxConcurrent) {
+        const task = this.queue.shift();
+        const downloadPromise = this.downloadTask(task);
+        activePromises.push(downloadPromise);
+      }
+
+      // 等待任一下载完成
+      if (activePromises.length > 0) {
+        const completedIndex = await Promise.race(
+          activePromises.map((promise, index) => promise.then(() => index))
+        );
+        
+        // 移除已完成的Promise
+        activePromises.splice(completedIndex, 1);
+        
+        // 添加延迟以避免过于频繁的请求
+        await new Promise(resolve => setTimeout(resolve, this.downloadDelay));
+      }
+    }
+
+    this.inProgress = false;
+    this.dispatchEvent(new CustomEvent('batchCompleted', {
+      detail: {
+        completed: this.completed,
+        failed: this.failed,
+        total: this.completed + this.failed
+      }
+    }));
+  }
+
+  // 下载单个任务
+  async downloadTask(task) {
+    task.status = 'downloading';
+    this.activeDownloads.set(task.id, task);
+    
+    this.dispatchEvent(new CustomEvent('taskStarted', { detail: task }));
+
+    try {
+      await this.executeDownload(task);
+      task.status = 'completed';
+      this.completed++;
+      
+      this.dispatchEvent(new CustomEvent('taskCompleted', { detail: task }));
+    } catch (error) {
+      task.error = error.message;
+      
+      if (task.retries < this.retryAttempts) {
+        task.retries++;
+        task.status = 'retrying';
+        
+        this.dispatchEvent(new CustomEvent('taskRetrying', { detail: task }));
+        
+        // 重新添加到队列末尾
+        this.queue.push(task);
+      } else {
+        task.status = 'failed';
+        this.failed++;
+        
+        this.dispatchEvent(new CustomEvent('taskFailed', { detail: task }));
+      }
+    } finally {
+      this.activeDownloads.delete(task.id);
+    }
+  }
+
+  // 执行实际下载
+  async executeDownload(task) {
+    const isVideo = task.type === 'video' || this.isVideoFile(task.url);
+    
+    if (isVideo) {
+      return this.proxyDownloadWithProgress(task);
+    } else {
+      return this.directDownloadWithProgress(task);
+    }
+  }
+
+  // 直接下载（图片）
+  async directDownloadWithProgress(task) {
+    const response = await fetch(task.url, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://www.douyin.com/',
+        'Accept': '*/*'
+      },
+      credentials: 'omit'
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const contentLength = parseInt(response.headers.get('content-length') || '0');
+    let downloadedBytes = 0;
+
+    const reader = response.body.getReader();
+    const chunks = [];
+
+    while (true) {
+      const { done, value } = await reader.read();
+      
+      if (done) break;
+      
+      chunks.push(value);
+      downloadedBytes += value.length;
+      
+      if (contentLength > 0) {
+        task.progress = (downloadedBytes / contentLength) * 100;
+        this.dispatchEvent(new CustomEvent('taskProgress', { detail: task }));
+      }
+    }
+
+    const blob = new Blob(chunks);
+    this.triggerDownload(blob, task.filename);
+  }
+
+  // 代理下载（视频）
+  async proxyDownloadWithProgress(task) {
+    return new Promise((resolve, reject) => {
+      try {
+        // 构建代理下载URL
+        const proxyUrl = `/proxy-download?url=${encodeURIComponent(task.url)}&filename=${encodeURIComponent(task.filename)}`;
+        
+        // 创建下载链接
+        const link = document.createElement('a');
+        link.href = proxyUrl;
+        link.download = task.filename;
+        link.style.display = 'none';
+        
+        // 监听下载开始（简化处理）
+        link.onload = () => {
+          task.progress = 100;
+          this.dispatchEvent(new CustomEvent('taskProgress', { detail: task }));
+          resolve();
+        };
+        
+        link.onerror = () => {
+          reject(new Error('代理下载失败'));
+        };
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // 对于代理下载，我们假设成功并立即解决
+        setTimeout(() => {
+          task.progress = 100;
+          this.dispatchEvent(new CustomEvent('taskProgress', { detail: task }));
+          resolve();
+        }, 100);
+        
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  // 触发文件下载
+  triggerDownload(blob, filename) {
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = filename;
+    link.style.display = 'none';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    window.URL.revokeObjectURL(downloadUrl);
+  }
+
+  // 生成文件名
+  generateFilename(item, index) {
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
+    const isImage = item.type === 'image';
+    const extension = this.getFileExtension(item.url);
+    const prefix = isImage ? 'douyin_image' : 'douyin_video';
+    
+    return `${prefix}_${timestamp}_${index + 1}${extension}`;
+  }
+
+  // 获取文件扩展名
+  getFileExtension(url) {
+    if (url.includes('.mp4')) return '.mp4';
+    if (url.includes('.jpg') || url.includes('.jpeg')) return '.jpg';
+    if (url.includes('.png')) return '.png';
+    
+    const urlMatch = url.match(/\.([a-zA-Z0-9]{2,4})(\?|$)/);
+    return urlMatch ? '.' + urlMatch[1] : '.mp4';
+  }
+
+  // 判断是否为视频文件
+  isVideoFile(url) {
+    return url.includes('.mp4') || 
+           url.includes('zjcdn.com') || 
+           url.includes('video') ||
+           this.getFileExtension(url) === '.mp4';
+  }
+
+  // 暂停下载
+  pauseDownloads() {
+    // 实现暂停逻辑
+    this.dispatchEvent(new CustomEvent('downloadsPaused'));
+  }
+
+  // 恢复下载
+  resumeDownloads() {
+    // 实现恢复逻辑
+    this.dispatchEvent(new CustomEvent('downloadsResumed'));
+  }
+
+  // 取消下载
+  cancelDownloads() {
+    this.queue = [];
+    this.activeDownloads.clear();
+    this.inProgress = false;
+    this.dispatchEvent(new CustomEvent('downloadsCancelled'));
+  }
+
+  // 获取下载统计
+  getStatistics() {
+    const elapsed = Date.now() - (this.statistics.startTime || Date.now());
+    const totalTasks = this.completed + this.failed + this.queue.length + this.activeDownloads.size;
+    
+    return {
+      ...this.statistics,
+      completed: this.completed,
+      failed: this.failed,
+      pending: this.queue.length,
+      active: this.activeDownloads.size,
+      total: totalTasks,
+      elapsedTime: elapsed,
+      completionRate: totalTasks > 0 ? (this.completed / totalTasks) * 100 : 0
+    };
+  }
+}
+
+// 增强的下载UI管理
+class DownloadUI {
+  constructor(downloadManager) {
+    this.manager = downloadManager;
+    this.setupEventListeners();
+  }
+
+  setupEventListeners() {
+    this.manager.addEventListener('batchStarted', (e) => {
+      this.showAdvancedProgress(e.detail.total);
+    });
+
+    this.manager.addEventListener('taskStarted', (e) => {
+      this.updateProgress();
+      this.updateDownloadSpeed('下载中...');
+    });
+
+    this.manager.addEventListener('taskProgress', (e) => {
+      this.updateProgress();
+      this.updateDownloadSpeed('下载中...');
+    });
+
+    this.manager.addEventListener('taskCompleted', (e) => {
+      this.updateProgress();
+      this.updateDownloadSpeed('下载中...');
+    });
+
+    this.manager.addEventListener('taskFailed', (e) => {
+      this.updateProgress();
+      console.warn('下载失败:', e.detail);
+    });
+
+    this.manager.addEventListener('taskRetrying', (e) => {
+      this.updateProgress();
+      this.updateDownloadSpeed('重试中...');
+    });
+
+    this.manager.addEventListener('batchCompleted', (e) => {
+      this.updateProgress();
+      this.updateDownloadSpeed('完成');
+      this.showCompletionSummary(e.detail);
+    });
+  }
+
+  showAdvancedProgress(total) {
+    const progressContainer = this.createProgressContainer();
+    document.body.appendChild(progressContainer);
+  }
+
+  createProgressContainer() {
+    const container = document.createElement('div');
+    container.id = 'advanced-download-progress';
+    container.innerHTML = `
+      <div class="download-panel">
+        <div class="download-header">
+          <h4>📥 批量下载进度</h4>
+          <div class="download-controls">
+            <button id="pause-btn" class="control-btn">⏸️</button>
+            <button id="cancel-btn" class="control-btn">❌</button>
+          </div>
+        </div>
+        <div class="download-stats">
+          <div class="stat-item">
+            <span class="stat-label">已完成:</span>
+            <span id="completed-count">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">进行中:</span>
+            <span id="active-count">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">失败:</span>
+            <span id="failed-count">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">总计:</span>
+            <span id="total-count">0</span>
+          </div>
+        </div>
+        <div class="progress-bar-container">
+          <div class="progress-bar">
+            <div id="progress-fill-advanced" class="progress-fill"></div>
+          </div>
+          <div class="progress-percentage">0%</div>
+        </div>
+        <div class="download-speed">
+          <span id="download-speed">准备中...</span>
+        </div>
+      </div>
+    `;
+    
+    // 添加样式
+    const style = document.createElement('style');
+    style.textContent = `
+      #advanced-download-progress {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        width: 350px;
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        z-index: 99999;
+        backdrop-filter: blur(10px);
+      }
+      
+      .download-panel {
+        padding: 20px;
+      }
+      
+      .download-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+      }
+      
+      .download-header h4 {
+        margin: 0;
+        color: var(--text-color);
+      }
+      
+      .download-controls {
+        display: flex;
+        gap: 8px;
+      }
+      
+      .control-btn {
+        background: none;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 4px 8px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+      
+      .control-btn:hover {
+        background: var(--primary-color);
+        color: white;
+      }
+      
+      .download-stats {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-bottom: 15px;
+      }
+      
+      .stat-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px;
+        background: var(--secondary-bg);
+        border-radius: 6px;
+        font-size: 0.9em;
+      }
+      
+      .progress-bar-container {
+        margin-bottom: 10px;
+      }
+      
+      .progress-bar {
+        height: 8px;
+        background: var(--border-color, #dee2e6);
+        border-radius: 4px;
+        overflow: hidden;
+        margin-bottom: 5px;
+        position: relative;
+      }
+      
+      .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, var(--primary-color, #007bff), var(--accent-color, #17a2b8));
+        transition: width 0.3s ease;
+        border-radius: 4px;
+      }
+      
+      .progress-percentage {
+        text-align: right;
+        font-size: 0.9em;
+        color: var(--text-secondary);
+      }
+      
+      .download-speed {
+        text-align: center;
+        font-size: 0.9em;
+        color: var(--text-secondary);
+      }
+    `;
+    
+    document.head.appendChild(style);
+    return container;
+  }
+
+  updateProgress() {
+    const stats = this.manager.getStatistics();
+    
+    // 添加调试输出
+    console.log('更新进度:', stats);
+    
+    const completedElement = document.getElementById('completed-count');
+    const activeElement = document.getElementById('active-count');
+    const failedElement = document.getElementById('failed-count');
+    const totalElement = document.getElementById('total-count');
+    
+    if (completedElement) completedElement.textContent = stats.completed;
+    if (activeElement) activeElement.textContent = stats.active;
+    if (failedElement) failedElement.textContent = stats.failed;
+    if (totalElement) totalElement.textContent = stats.total;
+    
+    const progressFill = document.getElementById('progress-fill-advanced');
+    const percentage = document.querySelector('.progress-percentage');
+    
+    if (progressFill && percentage) {
+      const completionRate = stats.completionRate || 0;
+      console.log('设置进度条宽度:', completionRate + '%');
+      progressFill.style.width = completionRate + '%';
+      progressFill.style.backgroundColor = '#007bff'; // 强制设置颜色
+      percentage.textContent = Math.round(completionRate) + '%';
+    } else {
+      console.log('进度条元素未找到:', { progressFill, percentage });
+    }
+  }
+
+  updateDownloadSpeed(status) {
+    const speedElement = document.getElementById('download-speed');
+    if (speedElement) {
+      speedElement.textContent = status;
+    }
+  }
+
+  showCompletionSummary(result) {
+    setTimeout(() => {
+      const container = document.getElementById('advanced-download-progress');
+      if (container) {
+        container.remove();
+      }
+      
+      let message = `🎉 下载完成！\n✅ 成功: ${result.completed}\n❌ 失败: ${result.failed}`;
+      showToast(message, result.failed > 0 ? 'warning' : 'success');
+    }, 2000);
+  }
+}
+
+// 创建全局下载管理器实例
+const downloadManager = new DownloadManager();
+const downloadUI = new DownloadUI(downloadManager);
+
+// 集成下载管理器与现有UI
+downloadManager.addEventListener('taskCompleted', () => {
+  const stats = downloadManager.getStatistics();
+  const progressPercent = (stats.completed / stats.total) * 100;
+  updateDownloadProgress(progressPercent);
+});
+
+downloadManager.addEventListener('batchCompleted', () => {
+  updateDownloadProgress(100);
+});
+
+// 下载设置管理
+function toggleDownloadSettings() {
+  const modal = document.getElementById('download-settings-modal');
+  modal.classList.add('show');
+  loadDownloadSettings();
+}
+
+function closeDownloadSettings() {
+  const modal = document.getElementById('download-settings-modal');
+  modal.classList.remove('show');
+}
+
+function loadDownloadSettings() {
+  // 从localStorage加载设置或使用默认值
+  const settings = JSON.parse(localStorage.getItem('downloadSettings') || '{}');
+  
+  const maxConcurrent = settings.maxConcurrent || 3;
+  const downloadDelay = settings.downloadDelay || 500;
+  const retryAttempts = settings.retryAttempts || 3;
+  const autoRetry = settings.autoRetry !== false;
+  const detailedProgress = settings.detailedProgress !== false;
+  
+  // 更新UI控件
+  document.getElementById('max-concurrent').value = maxConcurrent;
+  document.getElementById('max-concurrent-value').textContent = maxConcurrent;
+  
+  document.getElementById('download-delay').value = downloadDelay;
+  document.getElementById('download-delay-value').textContent = downloadDelay + 'ms';
+  
+  document.getElementById('retry-attempts').value = retryAttempts;
+  document.getElementById('retry-attempts-value').textContent = retryAttempts;
+  
+  document.getElementById('auto-retry').checked = autoRetry;
+  document.getElementById('detailed-progress').checked = detailedProgress;
+  
+  // 应用到下载管理器
+  downloadManager.maxConcurrent = maxConcurrent;
+  downloadManager.downloadDelay = downloadDelay;
+  downloadManager.retryAttempts = retryAttempts;
+}
+
+function saveDownloadSettings() {
+  const settings = {
+    maxConcurrent: parseInt(document.getElementById('max-concurrent').value),
+    downloadDelay: parseInt(document.getElementById('download-delay').value),
+    retryAttempts: parseInt(document.getElementById('retry-attempts').value),
+    autoRetry: document.getElementById('auto-retry').checked,
+    detailedProgress: document.getElementById('detailed-progress').checked
+  };
+  
+  // 保存到localStorage
+  localStorage.setItem('downloadSettings', JSON.stringify(settings));
+  
+  // 应用到下载管理器
+  downloadManager.maxConcurrent = settings.maxConcurrent;
+  downloadManager.downloadDelay = settings.downloadDelay;
+  downloadManager.retryAttempts = settings.retryAttempts;
+  
+  showToast('✅ 设置已保存', 'success');
+  closeDownloadSettings();
+}
+
+function resetDownloadSettings() {
+  // 重置为默认值
+  document.getElementById('max-concurrent').value = 3;
+  document.getElementById('max-concurrent-value').textContent = '3';
+  
+  document.getElementById('download-delay').value = 500;
+  document.getElementById('download-delay-value').textContent = '500ms';
+  
+  document.getElementById('retry-attempts').value = 3;
+  document.getElementById('retry-attempts-value').textContent = '3';
+  
+  document.getElementById('auto-retry').checked = true;
+  document.getElementById('detailed-progress').checked = true;
+  
+  // 清除localStorage中的设置
+  localStorage.removeItem('downloadSettings');
+  
+  showToast('⚙️ 设置已重置为默认值', 'info');
+}
+
+// 设置滑块事件监听器
+document.addEventListener('DOMContentLoaded', function() {
+  const maxConcurrentSlider = document.getElementById('max-concurrent');
+  const downloadDelaySlider = document.getElementById('download-delay');
+  const retryAttemptsSlider = document.getElementById('retry-attempts');
+  
+  if (maxConcurrentSlider) {
+    maxConcurrentSlider.addEventListener('input', function() {
+      document.getElementById('max-concurrent-value').textContent = this.value;
+    });
+  }
+  
+  if (downloadDelaySlider) {
+    downloadDelaySlider.addEventListener('input', function() {
+      document.getElementById('download-delay-value').textContent = this.value + 'ms';
+    });
+  }
+  
+  if (retryAttemptsSlider) {
+    retryAttemptsSlider.addEventListener('input', function() {
+      document.getElementById('retry-attempts-value').textContent = this.value;
+    });
+  }
+  
+  // 点击模态框背景关闭
+  const modal = document.getElementById('download-settings-modal');
+  if (modal) {
+    modal.addEventListener('click', function(e) {
+      if (e.target === modal) {
+        closeDownloadSettings();
+      }
+    });
+  }
+  
+  // ESC键关闭模态框
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      const modal = document.getElementById('download-settings-modal');
+      if (modal && modal.classList.contains('show')) {
+        closeDownloadSettings();
+      }
+    }
+  });
+  
+  // 初始化设置
+  loadDownloadSettings();
+});
+
+// 批量下载所有媒体 - 使用增强的下载管理系统
 async function downloadAllMedia() {
   if (!currentMediaItems || currentMediaItems.length === 0) {
     showToast('❌ 没有可下载的媒体文件', 'error');
     return;
   }
   
-  if (downloadProgress.inProgress) {
+  if (downloadManager.inProgress) {
     showToast('⏳ 下载任务进行中，请等待完成', 'warning');
     return;
   }
   
   const batchDownloadBtn = document.getElementById("batchDownloadBtn");
   const totalItems = currentMediaItems.length;
+  
+  try {
+    // 开始下载状态
+    batchDownloadBtn.classList.add('downloading');
+    batchDownloadBtn.innerHTML = '📥 下载中...';
+    updateDownloadProgress(0);
+    
+    // 使用新的下载管理器
+    await downloadManager.startBatchDownload(currentMediaItems);
+    
+    // 完成状态
+    batchDownloadBtn.classList.remove('downloading');
+    batchDownloadBtn.innerHTML = '📥 一键下载';
+    updateDownloadProgress(100);
+    
+  } catch (error) {
+    console.error('批量下载失败:', error);
+    showToast('❌ 批量下载失败: ' + error.message, 'error');
+    
+    // 重置按钮状态
+    batchDownloadBtn.classList.remove('downloading');
+    batchDownloadBtn.innerHTML = '📥 一键下载';
+    updateDownloadProgress(0);
+  }
+}
+
+// 保持向后兼容的旧版批量下载函数
+async function downloadAllMediaLegacy() {
+  if (!currentMediaItems || currentMediaItems.length === 0) {
+    showToast('❌ 没有可下载的媒体文件', 'error');
+    return;
+  }
+  
+  const totalItems = currentMediaItems.length;
   downloadProgress = { total: totalItems, completed: 0, inProgress: true };
   
-  // 开始下载状态
-  batchDownloadBtn.classList.add('downloading');
-  batchDownloadBtn.innerHTML = '<span class="download-progress-indicator"></span>📥 下载中...';
-  updateDownloadProgress(0);
-  
-  // 显示底部进度条而不是toast
+  // 显示底部进度条
   showDownloadProgress(totalItems);
   
   for (let i = 0; i < currentMediaItems.length; i++) {
     try {
-      downloadMedia(currentMediaItems[i].url, i, true); // 传入true表示批量下载
+      downloadMedia(currentMediaItems[i].url, i, true);
       downloadProgress.completed++;
       
-      // 更新圆形进度条
       const progressPercent = (downloadProgress.completed / downloadProgress.total) * 100;
-      updateDownloadProgress(progressPercent);
-      
-      // 更新底部进度条
       updateBottomProgress(downloadProgress.completed, downloadProgress.total);
       
-      // 每次下载后稍微延迟，避免过于频繁的请求
       await new Promise(resolve => setTimeout(resolve, 800));
     } catch (error) {
       console.error(`下载第 ${i + 1} 个文件失败:`, error);
@@ -869,12 +1612,6 @@ async function downloadAllMedia() {
   }
   
   downloadProgress.inProgress = false;
-  
-  // 完成状态
-  batchDownloadBtn.classList.remove('downloading');
-  batchDownloadBtn.innerHTML = '<span class="download-progress-indicator"></span>📥 一键下载';
-  
-  // 显示完成状态并延迟隐藏进度条
   updateBottomProgress(downloadProgress.total, downloadProgress.total, true);
   setTimeout(() => {
     hideDownloadProgress();
@@ -1115,6 +1852,56 @@ function showDesktopToast(message, type = 'success') {
 // Lightbox functionality
 let currentImageIndex = 0;
 let lightboxImages = [];
+let lightboxInitialized = false;
+
+// 初始化lightbox（页面加载时）
+function initLightbox() {
+  if (lightboxInitialized) return;
+  
+  const lightbox = document.getElementById('lightbox');
+  if (!lightbox) return;
+  
+  // 获取按钮元素
+  const closeBtn = lightbox.querySelector('.lightbox-close');
+  const prevBtn = lightbox.querySelector('.lightbox-prev');
+  const nextBtn = lightbox.querySelector('.lightbox-next');
+  
+  if (!closeBtn || !prevBtn || !nextBtn) return;
+  
+  // 直接在按钮上添加点击事件
+  closeBtn.onclick = function(e) {
+    e.stopPropagation();
+    closeLightbox();
+  };
+  
+  prevBtn.onclick = function(e) {
+    e.stopPropagation();
+    previousImage();
+  };
+  
+  nextBtn.onclick = function(e) {
+    e.stopPropagation();
+    nextImage();
+  };
+  
+  // 点击背景关闭
+  lightbox.onclick = function(e) {
+    if (e.target === lightbox) {
+      closeLightbox();
+    }
+  };
+  
+  // 键盘导航
+  document.addEventListener('keydown', function(e) {
+    if (lightbox.classList.contains('active')) {
+      if (e.key === 'Escape') closeLightbox();
+      if (e.key === 'ArrowLeft') previousImage();
+      if (e.key === 'ArrowRight') nextImage();
+    }
+  });
+  
+  lightboxInitialized = true;
+}
 
 function openLightbox(imageIndex) {
   // 获取所有图片URL
@@ -1139,37 +1926,11 @@ function openLightbox(imageIndex) {
 }
 
 function showLightbox() {
-  let lightbox = document.getElementById('lightbox');
+  // 确保lightbox已初始化
+  initLightbox();
   
-  if (!lightbox) {
-    // 创建lightbox元素
-    lightbox = document.createElement('div');
-    lightbox.id = 'lightbox';
-    lightbox.className = 'lightbox';
-    lightbox.innerHTML = `
-      <span class="lightbox-close">&times;</span>
-      <span class="lightbox-nav lightbox-prev" onclick="previousImage()">❮</span>
-      <span class="lightbox-nav lightbox-next" onclick="nextImage()">❯</span>
-      <img id="lightbox-img" src="" alt="">
-    `;
-    document.body.appendChild(lightbox);
-    
-    // 添加事件监听器
-    lightbox.addEventListener('click', function(e) {
-      if (e.target === lightbox || e.target.classList.contains('lightbox-close')) {
-        closeLightbox();
-      }
-    });
-    
-    // 键盘导航
-    document.addEventListener('keydown', function(e) {
-      if (lightbox.classList.contains('active')) {
-        if (e.key === 'Escape') closeLightbox();
-        if (e.key === 'ArrowLeft') previousImage();
-        if (e.key === 'ArrowRight') nextImage();
-      }
-    });
-  }
+  const lightbox = document.getElementById('lightbox');
+  if (!lightbox) return;
   
   const lightboxImg = document.getElementById('lightbox-img');
   lightboxImg.src = lightboxImages[currentImageIndex];
