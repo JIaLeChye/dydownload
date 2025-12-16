@@ -11,6 +11,46 @@ const { marked } = require('marked')
 
 const pipelineAsync = promisify(pipeline)
 
+// Performance monitoring utility
+class PerformanceMonitor {
+    constructor() {
+        this.metrics = new Map();
+        this.enabled = process.env.ENABLE_PERF_MONITORING === '1';
+    }
+    
+    start(label) {
+        if (!this.enabled) return;
+        this.metrics.set(label, {
+            start: Date.now(),
+            memory: process.memoryUsage()
+        });
+    }
+    
+    end(label) {
+        if (!this.enabled) return;
+        const metric = this.metrics.get(label);
+        if (!metric) return;
+        
+        const duration = Date.now() - metric.start;
+        const endMemory = process.memoryUsage();
+        const memoryDelta = {
+            heapUsed: (endMemory.heapUsed - metric.memory.heapUsed) / 1024 / 1024,
+            external: (endMemory.external - metric.memory.external) / 1024 / 1024
+        };
+        
+        console.log(`⏱️  [${label}] Duration: ${duration}ms, Memory: ${memoryDelta.heapUsed.toFixed(2)}MB heap`);
+        this.metrics.delete(label);
+        
+        return { duration, memoryDelta };
+    }
+    
+    clear() {
+        this.metrics.clear();
+    }
+}
+
+const perfMonitor = new PerformanceMonitor();
+
 // Simple in-memory cache for API responses
 class SimpleCache {
     constructor(ttl = 60000) { // default 1 minute TTL
@@ -60,9 +100,40 @@ class SimpleCache {
     }
 }
 
+// Request deduplication to prevent duplicate concurrent requests
+class RequestDeduplicator {
+    constructor() {
+        this.pending = new Map();
+    }
+    
+    async execute(key, asyncFunction) {
+        // If request is already pending, return the existing promise
+        if (this.pending.has(key)) {
+            console.log('📋 Request deduplication:', key);
+            return this.pending.get(key);
+        }
+        
+        // Create new request promise
+        const promise = asyncFunction()
+            .finally(() => {
+                // Remove from pending when complete
+                this.pending.delete(key);
+            });
+        
+        this.pending.set(key, promise);
+        return promise;
+    }
+    
+    clear() {
+        this.pending.clear();
+    }
+}
+
 // Create cache instances
 const videoDataCache = new SimpleCache(120000); // 2 minutes for video data
 videoDataCache.startCleanup();
+
+const requestDeduplicator = new RequestDeduplicator();
 
 /**
  * 从 Cookie 字符串中提取并检测 sid_guard
@@ -129,14 +200,17 @@ app.get('/readme', async (req, res) => {
 
 // zjcdn直链API - 优先使用zjcdn域名的直接链接
 app.post('/zjcdn', async (req, res) => {
+    perfMonitor.start('zjcdn-api');
     const url = req.body.url;
 
     // 简单的URL有效性预检查
     if (!url || typeof url !== 'string') {
+        perfMonitor.end('zjcdn-api');
         return res.send({ code: 1, msg: 'URL参数无效', data: null });
     }
     
     if (!url.includes('douyin.com') && !url.includes('dy.toutiao.com')) {
+        perfMonitor.end('zjcdn-api');
         return res.send({ code: 1, msg: '请提供有效的抖音链接', data: null });
     }
     
@@ -145,80 +219,79 @@ app.post('/zjcdn', async (req, res) => {
     const cachedResult = videoDataCache.get(cacheKey);
     if (cachedResult) {
         console.log('📦 使用缓存的结果');
+        perfMonitor.end('zjcdn-api');
         return res.send(cachedResult);
     }
     
+    // Use request deduplication
     try {
+        const result = await requestDeduplicator.execute(cacheKey, async () => {
+            const douyinId = await scraper.getDouyinVideoId(url);
+            const douyinData = await scraper.getDouyinVideoData(douyinId);
 
-        const douyinId = await scraper.getDouyinVideoId(url);
+            // 检查是否为图片集分享
+            const isImagesShare = [2, 42].includes(douyinData.aweme_detail.media_type);
 
-        const douyinData = await scraper.getDouyinVideoData(douyinId);
-
-        // 检查是否为图片集分享
-        const isImagesShare = [2, 42].includes(douyinData.aweme_detail.media_type);
-
-        if (isImagesShare) {
-            // 图片集分享
-
-            let douyinUrls = await scraper.getDouyinNoWatermarkVideo(douyinData);
-            const result = { 
-                code: 0, 
-                data: { 
-                    video: [], 
-                    img: douyinUrls || [], 
-                    debugMode: false, 
-                    isImagesShare: true,
-                    method: 'zjcdn-images',
-                    title: douyinData?.aweme_detail?.desc || '',
-                    author: douyinData?.aweme_detail?.author?.nickname || ''
-                } 
-            };
-            videoDataCache.set(cacheKey, result);
-            res.send(result);
-        } else {
-            // 视频分享 - 优先获取zjcdn直链
-
-            const zjcdnUrls = await scraper.getZjcdnDirectUrls(douyinData);
-            
-            if (zjcdnUrls.length > 0) {
-
-                const result = { 
-                    code: 0, 
-                    data: { 
-                        video: zjcdnUrls, 
-                        img: [], 
-                        debugMode: false, 
-                        isImagesShare: false,
-                        method: 'zjcdn-direct',
-                        title: douyinData?.aweme_detail?.desc || '',
-                        author: douyinData?.aweme_detail?.author?.nickname || ''
-                    } 
-                };
-                videoDataCache.set(cacheKey, result);
-                res.send(result);
-            } else {
-                // 回退到常规方法
-
+            if (isImagesShare) {
+                // 图片集分享
                 let douyinUrls = await scraper.getDouyinNoWatermarkVideo(douyinData);
-                const result = { 
+                return { 
                     code: 0, 
                     data: { 
-                        video: douyinUrls || [], 
-                        img: [], 
+                        video: [], 
+                        img: douyinUrls || [], 
                         debugMode: false, 
-                        isImagesShare: false,
-                        method: 'zjcdn-fallback',
+                        isImagesShare: true,
+                        method: 'zjcdn-images',
                         title: douyinData?.aweme_detail?.desc || '',
                         author: douyinData?.aweme_detail?.author?.nickname || ''
                     } 
                 };
-                videoDataCache.set(cacheKey, result);
-                res.send(result);
+            } else {
+                // 视频分享 - 优先获取zjcdn直链
+                const zjcdnUrls = await scraper.getZjcdnDirectUrls(douyinData);
+                
+                if (zjcdnUrls.length > 0) {
+                    return { 
+                        code: 0, 
+                        data: { 
+                            video: zjcdnUrls, 
+                            img: [], 
+                            debugMode: false, 
+                            isImagesShare: false,
+                            method: 'zjcdn-direct',
+                            title: douyinData?.aweme_detail?.desc || '',
+                            author: douyinData?.aweme_detail?.author?.nickname || ''
+                        } 
+                    };
+                } else {
+                    // 回退到常规方法
+                    let douyinUrls = await scraper.getDouyinNoWatermarkVideo(douyinData);
+                    return { 
+                        code: 0, 
+                        data: { 
+                            video: douyinUrls || [], 
+                            img: [], 
+                            debugMode: false, 
+                            isImagesShare: false,
+                            method: 'zjcdn-fallback',
+                            title: douyinData?.aweme_detail?.desc || '',
+                            author: douyinData?.aweme_detail?.author?.nickname || ''
+                        } 
+                    };
+                }
             }
-        }
+        });
+        
+        // Cache the result
+        videoDataCache.set(cacheKey, result);
+        perfMonitor.end('zjcdn-api');
+        res.send(result);
+        
     } catch (e) {
         console.log('❌ zjcdn API返回错误:', e.message);
         console.error('详细错误信息:', e);
+        perfMonitor.end('zjcdn-api');
         
         // 根据错误类型提供更具体的错误信息
         let userMessage = String(e);
