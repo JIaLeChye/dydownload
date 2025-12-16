@@ -93,12 +93,12 @@ document.addEventListener('DOMContentLoaded', function() {
       debouncedAutoResize(this);
     });
     
-    // 监听粘贴事件
+    // 监听粘贴事件 - use debounced version for consistency
     videoUrlTextarea.addEventListener('paste', function() {
-      // 粘贴后稍微延迟调整高度，确保内容已经粘贴完成
+      // Small delay to ensure content is pasted, then debounce
       setTimeout(() => {
-        autoResize(this);
-      }, 10);
+        debouncedAutoResize(this);
+      }, 50);
     });
     
     // 初始调整高度

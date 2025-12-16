@@ -56,6 +56,7 @@ class SimpleCache {
     constructor(ttl = 60000) { // TTL in milliseconds (default: 60 seconds)
         this.cache = new Map();
         this.ttl = ttl;
+        this.cleanupStartIndex = 0; // Track position for round-robin cleanup
     }
     
     get(key) {
@@ -81,27 +82,32 @@ class SimpleCache {
         this.cache.clear();
     }
     
-    // Cleanup expired entries periodically
+    // Cleanup expired entries periodically using round-robin approach
     startCleanup(interval = 300000) { // every 5 minutes
         this.cleanupInterval = setInterval(() => {
             const now = Date.now();
-            // Only check a subset of entries each time for better performance
-            const entriesToCheck = Math.min(this.cache.size, 50);
-            let checked = 0;
+            const entries = Array.from(this.cache.entries());
+            const entriesToCheck = Math.min(50, entries.length);
             
-            for (const [key, item] of this.cache.entries()) {
+            // Round-robin: start from last position
+            for (let i = 0; i < entriesToCheck && entries.length > 0; i++) {
+                const index = (this.cleanupStartIndex + i) % entries.length;
+                const [key, item] = entries[index];
+                
                 if (now > item.expiry) {
                     this.cache.delete(key);
                 }
-                checked++;
-                if (checked >= entriesToCheck) break;
             }
+            
+            // Advance starting position for next cleanup
+            this.cleanupStartIndex = (this.cleanupStartIndex + entriesToCheck) % Math.max(entries.length, 1);
         }, interval);
     }
     
     stopCleanup() {
         if (this.cleanupInterval) {
             clearInterval(this.cleanupInterval);
+            this.cleanupInterval = null;
         }
     }
 }
@@ -965,3 +971,16 @@ PORT = getArgsPort()
 app.listen(PORT, () => {
     console.log(`server is running on: ${PORT} \n`);
 })
+
+// Graceful shutdown handling
+process.on('SIGTERM', () => {
+    console.log('SIGTERM received, cleaning up...');
+    videoDataCache.stopCleanup();
+    process.exit(0);
+});
+
+process.on('SIGINT', () => {
+    console.log('SIGINT received, cleaning up...');
+    videoDataCache.stopCleanup();
+    process.exit(0);
+});
