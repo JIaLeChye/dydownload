@@ -11,6 +11,59 @@ const { marked } = require('marked')
 
 const pipelineAsync = promisify(pipeline)
 
+// Simple in-memory cache for API responses
+class SimpleCache {
+    constructor(ttl = 60000) { // default 1 minute TTL
+        this.cache = new Map();
+        this.ttl = ttl;
+    }
+    
+    get(key) {
+        const item = this.cache.get(key);
+        if (!item) return null;
+        
+        if (Date.now() > item.expiry) {
+            this.cache.delete(key);
+            return null;
+        }
+        
+        return item.value;
+    }
+    
+    set(key, value) {
+        this.cache.set(key, {
+            value,
+            expiry: Date.now() + this.ttl
+        });
+    }
+    
+    clear() {
+        this.cache.clear();
+    }
+    
+    // Cleanup expired entries periodically
+    startCleanup(interval = 300000) { // every 5 minutes
+        this.cleanupInterval = setInterval(() => {
+            const now = Date.now();
+            for (const [key, item] of this.cache.entries()) {
+                if (now > item.expiry) {
+                    this.cache.delete(key);
+                }
+            }
+        }, interval);
+    }
+    
+    stopCleanup() {
+        if (this.cleanupInterval) {
+            clearInterval(this.cleanupInterval);
+        }
+    }
+}
+
+// Create cache instances
+const videoDataCache = new SimpleCache(120000); // 2 minutes for video data
+videoDataCache.startCleanup();
+
 /**
  * 从 Cookie 字符串中提取并检测 sid_guard
  * @param {string} cookieString - Cookie 字符串
@@ -52,10 +105,26 @@ app.use(express.urlencoded({ extended: true }));
 const scraper = new Scraper()
 let PORT = process.env.PORT || 3000;
 
-// readme docs
-app.get('/readme', (req, res) => {
-    const html = getReadmeContent()
-    res.send(html)
+// readme docs - with caching
+let readmeCache = null;
+let readmeCacheTime = 0;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+app.get('/readme', async (req, res) => {
+    try {
+        const now = Date.now();
+        if (readmeCache && (now - readmeCacheTime < CACHE_DURATION)) {
+            return res.send(readmeCache);
+        }
+        
+        const html = await getReadmeContent();
+        readmeCache = html;
+        readmeCacheTime = now;
+        res.send(html);
+    } catch (error) {
+        console.error('Error loading readme:', error);
+        res.status(500).send('Error loading documentation');
+    }
 })
 
 // zjcdn直链API - 优先使用zjcdn域名的直接链接
@@ -71,6 +140,14 @@ app.post('/zjcdn', async (req, res) => {
         return res.send({ code: 1, msg: '请提供有效的抖音链接', data: null });
     }
     
+    // Check cache first
+    const cacheKey = `zjcdn:${url}`;
+    const cachedResult = videoDataCache.get(cacheKey);
+    if (cachedResult) {
+        console.log('📦 使用缓存的结果');
+        return res.send(cachedResult);
+    }
+    
     try {
 
         const douyinId = await scraper.getDouyinVideoId(url);
@@ -84,7 +161,7 @@ app.post('/zjcdn', async (req, res) => {
             // 图片集分享
 
             let douyinUrls = await scraper.getDouyinNoWatermarkVideo(douyinData);
-            res.send({ 
+            const result = { 
                 code: 0, 
                 data: { 
                     video: [], 
@@ -95,7 +172,9 @@ app.post('/zjcdn', async (req, res) => {
                     title: douyinData?.aweme_detail?.desc || '',
                     author: douyinData?.aweme_detail?.author?.nickname || ''
                 } 
-            });
+            };
+            videoDataCache.set(cacheKey, result);
+            res.send(result);
         } else {
             // 视频分享 - 优先获取zjcdn直链
 
@@ -103,7 +182,7 @@ app.post('/zjcdn', async (req, res) => {
             
             if (zjcdnUrls.length > 0) {
 
-                res.send({ 
+                const result = { 
                     code: 0, 
                     data: { 
                         video: zjcdnUrls, 
@@ -114,12 +193,14 @@ app.post('/zjcdn', async (req, res) => {
                         title: douyinData?.aweme_detail?.desc || '',
                         author: douyinData?.aweme_detail?.author?.nickname || ''
                     } 
-                });
+                };
+                videoDataCache.set(cacheKey, result);
+                res.send(result);
             } else {
                 // 回退到常规方法
 
                 let douyinUrls = await scraper.getDouyinNoWatermarkVideo(douyinData);
-                res.send({ 
+                const result = { 
                     code: 0, 
                     data: { 
                         video: douyinUrls || [], 
@@ -130,7 +211,9 @@ app.post('/zjcdn', async (req, res) => {
                         title: douyinData?.aweme_detail?.desc || '',
                         author: douyinData?.aweme_detail?.author?.nickname || ''
                     } 
-                });
+                };
+                videoDataCache.set(cacheKey, result);
+                res.send(result);
             }
         }
     } catch (e) {
@@ -364,9 +447,9 @@ app.post('/workflow', async (req, res) => {
     }
 })
 
-const getReadmeContent = () => {
-    const content = fs.readFileSync(path.join(__dirname, '../README.md'), 'utf-8')
-    const htmlContent = marked(content)
+const getReadmeContent = async () => {
+    const content = await fs.promises.readFile(path.join(__dirname, '../README.md'), 'utf-8');
+    const htmlContent = marked(content);
     const htmlWithStyle = `
         <!DOCTYPE html>
         <html lang="en">
@@ -384,7 +467,7 @@ const getReadmeContent = () => {
         </body>
         </html>
     `;
-    return htmlWithStyle
+    return htmlWithStyle;
 }
 
 // 服务器端代理下载 - 用户点击下载按钮直接下载，不跳转链接

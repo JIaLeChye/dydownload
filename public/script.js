@@ -5,6 +5,31 @@ const body = document.body;
 // Global variables
 let currentMediaItems = [];
 
+// Utility: Debounce function to limit function calls
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+// Utility: Throttle function to limit function execution rate
+function throttle(func, limit) {
+  let inThrottle;
+  return function(...args) {
+    if (!inThrottle) {
+      func.apply(this, args);
+      inThrottle = true;
+      setTimeout(() => inThrottle = false, limit);
+    }
+  };
+}
+
 // Check for saved theme preference or default to 'light'
 const currentTheme = localStorage.getItem('theme') || 'light';
 
@@ -46,14 +71,17 @@ function autoResize(textarea) {
   textarea.style.height = newHeight + 'px';
 }
 
+// Debounced version for better performance
+const debouncedAutoResize = debounce(autoResize, 100);
+
 // 初始化 textarea 自动调整功能
 document.addEventListener('DOMContentLoaded', function() {
   const videoUrlTextarea = document.getElementById('videoUrl');
   
   if (videoUrlTextarea) {
-    // 监听输入事件
+    // 监听输入事件 - use debounced version for better performance
     videoUrlTextarea.addEventListener('input', function() {
-      autoResize(this);
+      debouncedAutoResize(this);
     });
     
     // 监听粘贴事件
@@ -2361,10 +2389,35 @@ class CookieManager {
     // 立即执行一次检查
     this.checkCookieStatus();
     
-    // 设置定期检查（每30秒）
-    this.statusCheckInterval = setInterval(() => {
-      this.checkCookieStatus();
-    }, 30000);
+    // 使用动态检查间隔：
+    // - 正常状态：5分钟检查一次
+    // - 即将过期/错误：1分钟检查一次
+    this.currentCheckInterval = 300000; // 默认5分钟
+    
+    const dynamicCheck = async () => {
+      const result = await this.checkCookieStatus();
+      
+      // 根据状态调整检查间隔
+      let newInterval = 300000; // 默认5分钟
+      
+      if (result && result.sidGuardStatus) {
+        if (result.sidGuardStatus.isExpired || result.sidGuardStatus.error) {
+          newInterval = 60000; // 1分钟
+        } else if (result.sidGuardStatus.remainingSeconds && result.sidGuardStatus.remainingSeconds < 3600) {
+          newInterval = 120000; // 2分钟
+        }
+      }
+      
+      // 只在间隔改变时重置定时器
+      if (newInterval !== this.currentCheckInterval) {
+        this.currentCheckInterval = newInterval;
+        clearInterval(this.statusCheckInterval);
+        this.statusCheckInterval = setInterval(dynamicCheck, this.currentCheckInterval);
+      }
+    };
+    
+    // 设置定期检查
+    this.statusCheckInterval = setInterval(dynamicCheck, this.currentCheckInterval);
   }
   
   // 新增：刷新状态（带视觉反馈）
