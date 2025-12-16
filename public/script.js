@@ -5,6 +5,40 @@ const body = document.body;
 // Global variables
 let currentMediaItems = [];
 
+// Performance constants
+const PERF_CONSTANTS = {
+  DEBOUNCE_DELAY: 100,           // Debounce delay for input events (ms)
+  THROTTLE_DELAY: 200,           // Throttle delay for frequent events (ms)
+  COOKIE_CHECK_NORMAL: 300000,   // 5 minutes - normal cookie check interval
+  COOKIE_CHECK_WARNING: 120000,  // 2 minutes - warning interval (expiring soon)
+  COOKIE_CHECK_ERROR: 60000,     // 1 minute - error interval (expired/error)
+};
+
+// Utility: Debounce function to limit function calls
+function debounce(func, wait = PERF_CONSTANTS.DEBOUNCE_DELAY) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+// Utility: Throttle function to limit function execution rate
+function throttle(func, limit = PERF_CONSTANTS.THROTTLE_DELAY) {
+  let inThrottle;
+  return function(...args) {
+    if (!inThrottle) {
+      func.apply(this, args);
+      inThrottle = true;
+      setTimeout(() => inThrottle = false, limit);
+    }
+  };
+}
+
 // Check for saved theme preference or default to 'light'
 const currentTheme = localStorage.getItem('theme') || 'light';
 
@@ -46,22 +80,25 @@ function autoResize(textarea) {
   textarea.style.height = newHeight + 'px';
 }
 
+// Debounced version for better performance
+const debouncedAutoResize = debounce(autoResize, PERF_CONSTANTS.DEBOUNCE_DELAY);
+
 // 初始化 textarea 自动调整功能
 document.addEventListener('DOMContentLoaded', function() {
   const videoUrlTextarea = document.getElementById('videoUrl');
   
   if (videoUrlTextarea) {
-    // 监听输入事件
+    // 监听输入事件 - use debounced version for better performance
     videoUrlTextarea.addEventListener('input', function() {
-      autoResize(this);
+      debouncedAutoResize(this);
     });
     
-    // 监听粘贴事件
+    // 监听粘贴事件 - use debounced version for consistency
     videoUrlTextarea.addEventListener('paste', function() {
-      // 粘贴后稍微延迟调整高度，确保内容已经粘贴完成
+      // Small delay to ensure content is pasted, then debounce
       setTimeout(() => {
-        autoResize(this);
-      }, 10);
+        debouncedAutoResize(this);
+      }, 50);
     });
     
     // 初始调整高度
@@ -2361,10 +2398,35 @@ class CookieManager {
     // 立即执行一次检查
     this.checkCookieStatus();
     
-    // 设置定期检查（每30秒）
-    this.statusCheckInterval = setInterval(() => {
-      this.checkCookieStatus();
-    }, 30000);
+    // 使用动态检查间隔：
+    // - 正常状态：5分钟检查一次
+    // - 即将过期/错误：1分钟检查一次
+    this.currentCheckInterval = PERF_CONSTANTS.COOKIE_CHECK_NORMAL; // 默认5分钟
+    
+    const dynamicCheck = async () => {
+      const result = await this.checkCookieStatus();
+      
+      // 根据状态调整检查间隔
+      let newInterval = PERF_CONSTANTS.COOKIE_CHECK_NORMAL; // 默认5分钟
+      
+      if (result && result.sidGuardStatus) {
+        if (result.sidGuardStatus.isExpired || result.sidGuardStatus.error) {
+          newInterval = PERF_CONSTANTS.COOKIE_CHECK_ERROR; // 1分钟
+        } else if (result.sidGuardStatus.remainingSeconds && result.sidGuardStatus.remainingSeconds < 3600) {
+          newInterval = PERF_CONSTANTS.COOKIE_CHECK_WARNING; // 2分钟
+        }
+      }
+      
+      // 只在间隔改变时重置定时器
+      if (newInterval !== this.currentCheckInterval) {
+        this.currentCheckInterval = newInterval;
+        clearInterval(this.statusCheckInterval);
+        this.statusCheckInterval = setInterval(dynamicCheck, this.currentCheckInterval);
+      }
+    };
+    
+    // 设置定期检查
+    this.statusCheckInterval = setInterval(dynamicCheck, this.currentCheckInterval);
   }
   
   // 新增：刷新状态（带视觉反馈）

@@ -11,6 +11,142 @@ const { marked } = require('marked')
 
 const pipelineAsync = promisify(pipeline)
 
+// Performance monitoring utility
+class PerformanceMonitor {
+    constructor() {
+        this.metrics = new Map();
+        this.enabled = process.env.ENABLE_PERF_MONITORING === '1';
+    }
+    
+    start(label) {
+        if (!this.enabled) return;
+        this.metrics.set(label, {
+            start: Date.now(),
+            memory: process.memoryUsage()
+        });
+    }
+    
+    end(label) {
+        if (!this.enabled) return;
+        const metric = this.metrics.get(label);
+        if (!metric) return;
+        
+        const duration = Date.now() - metric.start;
+        const endMemory = process.memoryUsage();
+        const memoryDelta = {
+            heapUsed: (endMemory.heapUsed - metric.memory.heapUsed) / 1024 / 1024,
+            external: (endMemory.external - metric.memory.external) / 1024 / 1024
+        };
+        
+        console.log(`⏱️  [${label}] Duration: ${duration}ms, Memory: ${memoryDelta.heapUsed.toFixed(2)}MB heap`);
+        this.metrics.delete(label);
+        
+        return { duration, memoryDelta };
+    }
+    
+    clear() {
+        this.metrics.clear();
+    }
+}
+
+const perfMonitor = new PerformanceMonitor();
+
+// Simple in-memory cache for API responses
+class SimpleCache {
+    constructor(ttl = 60000) { // TTL in milliseconds (default: 60 seconds)
+        this.cache = new Map();
+        this.ttl = ttl;
+        this.cleanupStartIndex = 0; // Track position for round-robin cleanup
+    }
+    
+    get(key) {
+        const item = this.cache.get(key);
+        if (!item) return null;
+        
+        if (Date.now() > item.expiry) {
+            this.cache.delete(key);
+            return null;
+        }
+        
+        return item.value;
+    }
+    
+    set(key, value) {
+        this.cache.set(key, {
+            value,
+            expiry: Date.now() + this.ttl
+        });
+    }
+    
+    clear() {
+        this.cache.clear();
+    }
+    
+    // Cleanup expired entries periodically using round-robin approach
+    startCleanup(interval = 300000) { // every 5 minutes
+        this.cleanupInterval = setInterval(() => {
+            const now = Date.now();
+            const entries = Array.from(this.cache.entries());
+            const entriesToCheck = Math.min(50, entries.length);
+            
+            // Round-robin: start from last position
+            for (let i = 0; i < entriesToCheck && entries.length > 0; i++) {
+                const index = (this.cleanupStartIndex + i) % entries.length;
+                const [key, item] = entries[index];
+                
+                if (now > item.expiry) {
+                    this.cache.delete(key);
+                }
+            }
+            
+            // Advance starting position for next cleanup
+            this.cleanupStartIndex = (this.cleanupStartIndex + entriesToCheck) % Math.max(entries.length, 1);
+        }, interval);
+    }
+    
+    stopCleanup() {
+        if (this.cleanupInterval) {
+            clearInterval(this.cleanupInterval);
+            this.cleanupInterval = null;
+        }
+    }
+}
+
+// Request deduplication to prevent duplicate concurrent requests
+class RequestDeduplicator {
+    constructor() {
+        this.pending = new Map();
+    }
+    
+    async execute(key, asyncFunction) {
+        // If request is already pending, return the existing promise
+        if (this.pending.has(key)) {
+            console.log('📋 Request deduplication:', key);
+            return this.pending.get(key);
+        }
+        
+        // Create new request promise
+        const promise = asyncFunction()
+            .finally(() => {
+                // Remove from pending when complete
+                this.pending.delete(key);
+            });
+        
+        this.pending.set(key, promise);
+        return promise;
+    }
+    
+    clear() {
+        this.pending.clear();
+    }
+}
+
+// Create cache instances
+const videoDataCache = new SimpleCache(120000); // 2 minutes for video data
+videoDataCache.startCleanup();
+
+const requestDeduplicator = new RequestDeduplicator();
+
 /**
  * 从 Cookie 字符串中提取并检测 sid_guard
  * @param {string} cookieString - Cookie 字符串
@@ -52,90 +188,122 @@ app.use(express.urlencoded({ extended: true }));
 const scraper = new Scraper()
 let PORT = process.env.PORT || 3000;
 
-// readme docs
-app.get('/readme', (req, res) => {
-    const html = getReadmeContent()
-    res.send(html)
+// readme docs - with caching
+let readmeCache = null;
+let readmeCacheTime = 0;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+app.get('/readme', async (req, res) => {
+    try {
+        const now = Date.now();
+        if (readmeCache && (now - readmeCacheTime < CACHE_DURATION)) {
+            return res.send(readmeCache);
+        }
+        
+        const html = await getReadmeContent();
+        readmeCache = html;
+        readmeCacheTime = now;
+        res.send(html);
+    } catch (error) {
+        console.error('Error loading readme:', error);
+        res.status(500).send('Error loading documentation');
+    }
 })
 
 // zjcdn直链API - 优先使用zjcdn域名的直接链接
 app.post('/zjcdn', async (req, res) => {
+    perfMonitor.start('zjcdn-api');
     const url = req.body.url;
 
     // 简单的URL有效性预检查
     if (!url || typeof url !== 'string') {
+        perfMonitor.end('zjcdn-api');
         return res.send({ code: 1, msg: 'URL参数无效', data: null });
     }
     
     if (!url.includes('douyin.com') && !url.includes('dy.toutiao.com')) {
+        perfMonitor.end('zjcdn-api');
         return res.send({ code: 1, msg: '请提供有效的抖音链接', data: null });
     }
     
+    // Check cache first
+    const cacheKey = `zjcdn:${url}`;
+    const cachedResult = videoDataCache.get(cacheKey);
+    if (cachedResult) {
+        console.log('📦 使用缓存的结果');
+        perfMonitor.end('zjcdn-api');
+        return res.send(cachedResult);
+    }
+    
+    // Use request deduplication
     try {
+        const result = await requestDeduplicator.execute(cacheKey, async () => {
+            const douyinId = await scraper.getDouyinVideoId(url);
+            const douyinData = await scraper.getDouyinVideoData(douyinId);
 
-        const douyinId = await scraper.getDouyinVideoId(url);
+            // 检查是否为图片集分享
+            const isImagesShare = [2, 42].includes(douyinData.aweme_detail.media_type);
 
-        const douyinData = await scraper.getDouyinVideoData(douyinId);
-
-        // 检查是否为图片集分享
-        const isImagesShare = [2, 42].includes(douyinData.aweme_detail.media_type);
-
-        if (isImagesShare) {
-            // 图片集分享
-
-            let douyinUrls = await scraper.getDouyinNoWatermarkVideo(douyinData);
-            res.send({ 
-                code: 0, 
-                data: { 
-                    video: [], 
-                    img: douyinUrls || [], 
-                    debugMode: false, 
-                    isImagesShare: true,
-                    method: 'zjcdn-images',
-                    title: douyinData?.aweme_detail?.desc || '',
-                    author: douyinData?.aweme_detail?.author?.nickname || ''
-                } 
-            });
-        } else {
-            // 视频分享 - 优先获取zjcdn直链
-
-            const zjcdnUrls = await scraper.getZjcdnDirectUrls(douyinData);
-            
-            if (zjcdnUrls.length > 0) {
-
-                res.send({ 
-                    code: 0, 
-                    data: { 
-                        video: zjcdnUrls, 
-                        img: [], 
-                        debugMode: false, 
-                        isImagesShare: false,
-                        method: 'zjcdn-direct',
-                        title: douyinData?.aweme_detail?.desc || '',
-                        author: douyinData?.aweme_detail?.author?.nickname || ''
-                    } 
-                });
-            } else {
-                // 回退到常规方法
-
+            if (isImagesShare) {
+                // 图片集分享
                 let douyinUrls = await scraper.getDouyinNoWatermarkVideo(douyinData);
-                res.send({ 
+                return { 
                     code: 0, 
                     data: { 
-                        video: douyinUrls || [], 
-                        img: [], 
+                        video: [], 
+                        img: douyinUrls || [], 
                         debugMode: false, 
-                        isImagesShare: false,
-                        method: 'zjcdn-fallback',
+                        isImagesShare: true,
+                        method: 'zjcdn-images',
                         title: douyinData?.aweme_detail?.desc || '',
                         author: douyinData?.aweme_detail?.author?.nickname || ''
                     } 
-                });
+                };
+            } else {
+                // 视频分享 - 优先获取zjcdn直链
+                const zjcdnUrls = await scraper.getZjcdnDirectUrls(douyinData);
+                
+                if (zjcdnUrls.length > 0) {
+                    return { 
+                        code: 0, 
+                        data: { 
+                            video: zjcdnUrls, 
+                            img: [], 
+                            debugMode: false, 
+                            isImagesShare: false,
+                            method: 'zjcdn-direct',
+                            title: douyinData?.aweme_detail?.desc || '',
+                            author: douyinData?.aweme_detail?.author?.nickname || ''
+                        } 
+                    };
+                } else {
+                    // 回退到常规方法
+                    let douyinUrls = await scraper.getDouyinNoWatermarkVideo(douyinData);
+                    return { 
+                        code: 0, 
+                        data: { 
+                            video: douyinUrls || [], 
+                            img: [], 
+                            debugMode: false, 
+                            isImagesShare: false,
+                            method: 'zjcdn-fallback',
+                            title: douyinData?.aweme_detail?.desc || '',
+                            author: douyinData?.aweme_detail?.author?.nickname || ''
+                        } 
+                    };
+                }
             }
-        }
+        });
+        
+        // Cache the result
+        videoDataCache.set(cacheKey, result);
+        perfMonitor.end('zjcdn-api');
+        res.send(result);
+        
     } catch (e) {
         console.log('❌ zjcdn API返回错误:', e.message);
         console.error('详细错误信息:', e);
+        perfMonitor.end('zjcdn-api');
         
         // 根据错误类型提供更具体的错误信息
         let userMessage = String(e);
@@ -364,9 +532,9 @@ app.post('/workflow', async (req, res) => {
     }
 })
 
-const getReadmeContent = () => {
-    const content = fs.readFileSync(path.join(__dirname, '../README.md'), 'utf-8')
-    const htmlContent = marked(content)
+const getReadmeContent = async () => {
+    const content = await fs.promises.readFile(path.join(__dirname, '../README.md'), 'utf-8');
+    const htmlContent = marked(content);
     const htmlWithStyle = `
         <!DOCTYPE html>
         <html lang="en">
@@ -384,7 +552,7 @@ const getReadmeContent = () => {
         </body>
         </html>
     `;
-    return htmlWithStyle
+    return htmlWithStyle;
 }
 
 // 服务器端代理下载 - 用户点击下载按钮直接下载，不跳转链接
@@ -803,3 +971,16 @@ PORT = getArgsPort()
 app.listen(PORT, () => {
     console.log(`server is running on: ${PORT} \n`);
 })
+
+// Graceful shutdown handling
+process.on('SIGTERM', () => {
+    console.log('SIGTERM received, cleaning up...');
+    videoDataCache.stopCleanup();
+    process.exit(0);
+});
+
+process.on('SIGINT', () => {
+    console.log('SIGINT received, cleaning up...');
+    videoDataCache.stopCleanup();
+    process.exit(0);
+});
