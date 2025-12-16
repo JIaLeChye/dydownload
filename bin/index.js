@@ -173,7 +173,7 @@ class Scraper {
     /**
      * @description get videoId by share url
      * @param {string} url 
-     * @returns {string} videoId
+     * @returns {Promise<string>} videoId
      */
     getVideoIdByShareUrl(url) {
         // Check cache first
@@ -256,14 +256,21 @@ class Scraper {
     
     /**
      * @private
-     * Cache video ID with size limit
+     * Cache video ID with size limit using proper LRU strategy
      */
     _cacheVideoId(url, videoId) {
-        // Limit cache size
+        // Remove if already exists to update access order
+        if (this.videoIdCache.has(url)) {
+            this.videoIdCache.delete(url);
+        }
+        
+        // Limit cache size - remove least recently used (first in Map)
         if (this.videoIdCache.size >= this.cacheMaxSize) {
             const firstKey = this.videoIdCache.keys().next().value;
             this.videoIdCache.delete(firstKey);
         }
+        
+        // Add to end (most recently used)
         this.videoIdCache.set(url, videoId);
     }
     /**

@@ -5,8 +5,17 @@ const body = document.body;
 // Global variables
 let currentMediaItems = [];
 
+// Performance constants
+const PERF_CONSTANTS = {
+  DEBOUNCE_DELAY: 100,           // Debounce delay for input events (ms)
+  THROTTLE_DELAY: 200,           // Throttle delay for frequent events (ms)
+  COOKIE_CHECK_NORMAL: 300000,   // 5 minutes - normal cookie check interval
+  COOKIE_CHECK_WARNING: 120000,  // 2 minutes - warning interval (expiring soon)
+  COOKIE_CHECK_ERROR: 60000,     // 1 minute - error interval (expired/error)
+};
+
 // Utility: Debounce function to limit function calls
-function debounce(func, wait) {
+function debounce(func, wait = PERF_CONSTANTS.DEBOUNCE_DELAY) {
   let timeout;
   return function executedFunction(...args) {
     const later = () => {
@@ -19,7 +28,7 @@ function debounce(func, wait) {
 }
 
 // Utility: Throttle function to limit function execution rate
-function throttle(func, limit) {
+function throttle(func, limit = PERF_CONSTANTS.THROTTLE_DELAY) {
   let inThrottle;
   return function(...args) {
     if (!inThrottle) {
@@ -72,7 +81,7 @@ function autoResize(textarea) {
 }
 
 // Debounced version for better performance
-const debouncedAutoResize = debounce(autoResize, 100);
+const debouncedAutoResize = debounce(autoResize, PERF_CONSTANTS.DEBOUNCE_DELAY);
 
 // 初始化 textarea 自动调整功能
 document.addEventListener('DOMContentLoaded', function() {
@@ -2392,19 +2401,19 @@ class CookieManager {
     // 使用动态检查间隔：
     // - 正常状态：5分钟检查一次
     // - 即将过期/错误：1分钟检查一次
-    this.currentCheckInterval = 300000; // 默认5分钟
+    this.currentCheckInterval = PERF_CONSTANTS.COOKIE_CHECK_NORMAL; // 默认5分钟
     
     const dynamicCheck = async () => {
       const result = await this.checkCookieStatus();
       
       // 根据状态调整检查间隔
-      let newInterval = 300000; // 默认5分钟
+      let newInterval = PERF_CONSTANTS.COOKIE_CHECK_NORMAL; // 默认5分钟
       
       if (result && result.sidGuardStatus) {
         if (result.sidGuardStatus.isExpired || result.sidGuardStatus.error) {
-          newInterval = 60000; // 1分钟
+          newInterval = PERF_CONSTANTS.COOKIE_CHECK_ERROR; // 1分钟
         } else if (result.sidGuardStatus.remainingSeconds && result.sidGuardStatus.remainingSeconds < 3600) {
-          newInterval = 120000; // 2分钟
+          newInterval = PERF_CONSTANTS.COOKIE_CHECK_WARNING; // 2分钟
         }
       }
       

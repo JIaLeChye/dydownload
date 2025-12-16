@@ -53,7 +53,7 @@ const perfMonitor = new PerformanceMonitor();
 
 // Simple in-memory cache for API responses
 class SimpleCache {
-    constructor(ttl = 60000) { // default 1 minute TTL
+    constructor(ttl = 60000) { // TTL in milliseconds (default: 60 seconds)
         this.cache = new Map();
         this.ttl = ttl;
     }
@@ -85,10 +85,16 @@ class SimpleCache {
     startCleanup(interval = 300000) { // every 5 minutes
         this.cleanupInterval = setInterval(() => {
             const now = Date.now();
+            // Only check a subset of entries each time for better performance
+            const entriesToCheck = Math.min(this.cache.size, 50);
+            let checked = 0;
+            
             for (const [key, item] of this.cache.entries()) {
                 if (now > item.expiry) {
                     this.cache.delete(key);
                 }
+                checked++;
+                if (checked >= entriesToCheck) break;
             }
         }, interval);
     }
