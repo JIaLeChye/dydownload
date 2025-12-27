@@ -127,6 +127,24 @@ class Scraper {
             'cookie': process.env.DOUYIN_COOKIE || 'sid_guard=替换为您的sid_guard值;'
             // 其他请求头
         };
+        
+        // Precompile regex patterns for better performance
+        this.urlPatterns = [
+            /(slides|video|note)\/(\d+)/, // 原有模式
+            /\/video\/(\d+)/, // 简单video模式
+            /\/note\/(\d+)/, // note模式
+            /\/slides\/(\d+)/, // slides模式
+            /aweme_id[=:](\d+)/, // 查询参数模式
+            /\/(\d{19})/, // 19位数字ID
+            /\/(\d{18})/, // 18位数字ID
+            /\/(\d{17})/, // 17位数字ID
+        ];
+        
+        this.urlRegex = new RegExp('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*(),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+');
+        
+        // Simple cache for video IDs
+        this.videoIdCache = new Map();
+        this.cacheMaxSize = 100;
     }
 
     /**
@@ -155,9 +173,14 @@ class Scraper {
     /**
      * @description get videoId by share url
      * @param {string} url 
-     * @returns {string} videoId
+     * @returns {Promise<string>} videoId
      */
     getVideoIdByShareUrl(url) {
+        // Check cache first
+        if (this.videoIdCache.has(url)) {
+            return Promise.resolve(this.videoIdCache.get(url));
+        }
+        
         // 尝试多种用户代理
         const userAgents = [
             'Mozilla/5.0 (iPhone; CPU iPhone OS 10_3_1 like Mac OS X) AppleWebKit/603.1.30 (KHTML, like Gecko) Version/10.0 Mobile/14E304 Safari/602.1',
@@ -194,32 +217,23 @@ class Scraper {
                         continue;
                     }
                     
-                    // 尝试多种正则表达式模式匹配
-                    const patterns = [
-                        /(slides|video|note)\/(\d+)/, // 原有模式
-                        /\/video\/(\d+)/, // 简单video模式
-                        /\/note\/(\d+)/, // note模式
-                        /\/slides\/(\d+)/, // slides模式
-                        /aweme_id[=:](\d+)/, // 查询参数模式
-                        /\/(\d{19})/, // 19位数字ID
-                        /\/(\d{18})/, // 18位数字ID
-                        /\/(\d{17})/, // 17位数字ID
-                    ];
-                    
+                    // Use precompiled patterns
                     let videoId = null;
                     let matchedPattern = '';
                     
-                    for (let j = 0; j < patterns.length; j++) {
-                        const match = res.url.match(patterns[j]);
+                    for (let j = 0; j < this.urlPatterns.length; j++) {
+                        const match = res.url.match(this.urlPatterns[j]);
                         if (match) {
                             videoId = match[match.length - 1]; // 取最后一个捕获组
-                            matchedPattern = `Pattern ${j + 1}: ${patterns[j]}`;
+                            matchedPattern = `Pattern ${j + 1}`;
 
                             break;
                         }
                     }
                     
                     if (videoId) {
+                        // Cache the result
+                        this._cacheVideoId(url, videoId);
 
                         resolve(videoId);
                         return;
@@ -239,6 +253,26 @@ class Scraper {
             reject(new Error(`无法从任何用户代理获取videoId。请检查URL是否有效或已过期。URL: ${url}`));
         });
     }
+    
+    /**
+     * @private
+     * Cache video ID with size limit using proper LRU strategy
+     */
+    _cacheVideoId(url, videoId) {
+        // Remove if already exists to update access order
+        if (this.videoIdCache.has(url)) {
+            this.videoIdCache.delete(url);
+        }
+        
+        // Limit cache size - remove least recently used (first in Map)
+        if (this.videoIdCache.size >= this.cacheMaxSize) {
+            const firstKey = this.videoIdCache.keys().next().value;
+            this.videoIdCache.delete(firstKey);
+        }
+        
+        // Add to end (most recently used)
+        this.videoIdCache.set(url, videoId);
+    }
     /**
      * @description get sec_user_id by shared home page url
      * @param {string} url 用户主页分享地址 
@@ -250,8 +284,8 @@ class Scraper {
             'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 10_3_1 like Mac OS X) AppleWebKit/603.1.30 (KHTML, like Gecko) Version/10.0 Mobile/14E304 Safari/602.1',
         }
         return new Promise((resolve, reject) => {
-            const reg = new RegExp('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
-            const matchUrl = url.match(reg)
+            // Use precompiled regex
+            const matchUrl = url.match(this.urlRegex);
             if (!matchUrl || !matchUrl[0]) {
                 reject('输入链接没有解析到地址')
             } else {
@@ -292,8 +326,8 @@ class Scraper {
             }
         }
         
-        const reg = new RegExp('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
-        const relUrl = url.match(reg)
+        // Use precompiled regex
+        const relUrl = url.match(this.urlRegex);
         
         if (!relUrl || !relUrl[0]) {
             console.log('❌ URL格式不正确:', url);
