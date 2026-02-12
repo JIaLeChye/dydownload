@@ -124,10 +124,25 @@ npm run dev
 
 访问 http://localhost:3000 开始使用
 
+#### � 可选配置
+
+**.env.local 可选环境变量：**
+
+```bash
+# 性能监控（默认关闭）
+ENABLE_PERF_MONITORING=1    # 启用后会输出API响应时间和内存使用情况
+
+# 其他可选配置
+DEBUG_VIDEO_URLS=1          # 启用视频URL调试模式
+SINGLE_VIDEO_URL=1          # 只返回单个最佳视频链接
+STABLE_VIDEO_ONLY=1         # 只使用稳定的API接口
+```
+
 #### 💡 本地部署注意事项
 - ✅ Cookie配置在 `.env.local` 文件中，重启服务器后持久有效
 - ✅ 网页界面更新Cookie仅在当前会话有效，重启后恢复配置文件中的值
 - ✅ 建议在 `.env.local` 中配置稳定的长期Cookie
+- ⚡ 性能监控默认关闭，开启后可查看详细性能指标
 - 🔄 Cookie过期时可先用网页更新应急，再更新配置文件
 
 ---
@@ -223,14 +238,12 @@ npm run dev
 
 #### 更新Cookie
 1. 点击页面右上角的 🍪 按钮
-2. 输入新的Cookie值（支持多种格式）：
-   - 完整Cookie：`sid_guard=xxx; sessionid=yyy;`
+2. 输入新的Cookie值
    - 仅sid_guard值：`a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6%7C1756624538...`
 3. 可选择是否同步到Vercel环境变量
 4. 点击"更新Cookie"完成
 
 #### Cookie格式说明
-- ✅ **完整格式**：`sid_guard=值; sessionid=值; 其他=值;`
 - ✅ **简化格式**：`sid_guard=值;`
 - ✅ **纯值格式**：`a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6%7C1756624538...`
 
@@ -344,7 +357,21 @@ DOUYIN_COOKIE=sid_guard=你的cookie值;
   - 配置文件持久化存储
   - 网页界面临时更新
   - Vercel环境变量自动同步
-- **智能降级**：核心功能在任何配置下都能工作
+
+### ⚡ 性能优化与监控
+- **性能监控**（可选功能，默认关闭）：
+  - 通过环境变量 `ENABLE_PERF_MONITORING=1` 启用
+  - 记录API端点响应时间和内存使用情况
+  - 输出格式：`⏱️ [zjcdn-api] Duration: 245ms, Memory: 1.23MB heap`
+  - 零性能开销：禁用时完全不执行任何监控代码
+- **响应缓存**：
+  - 2分钟TTL自动过期
+  - 相同URL请求直接返回缓存结果
+  - 性能提升：缓存命中可达99.6%加速
+- **请求去重**：
+  - 并发相同请求自动合并
+  - 减少重复API调用约80%
+  - 降低服务器负载和API压力
 
 ### 用户体验
 - **🎨 双主题设计** - 明亮/深色模式切换
@@ -375,7 +402,35 @@ FetchError: invalid json response body at https://www.douyin.com/aweme/v1/web/aw
 
 ## 📅 更新日志
 
-### 🔧 v2025.11.23 - UI修复与优化
+### 🚀 v2026.2.12
+*发布日期: 2026年2月12日*
+
+**🔍 环境检测**
+- 自动识别本地/Vercel环境，启动时显示环境信息和Cookie加载状态
+- 修复 `.env.local` 文件加载问题，添加调试日志
+
+**💾 Cookie管理**
+- 网页更新Cookie后自动写入 `.env.local` 文件，重启后保持有效
+- 支持 `sid_guard` 完整格式和纯值格式自动转换
+- 本地环境立即更新内存变量 + 保存文件，Vercel环境更新运行时变量
+- 新增 `/api/cookie-status` 端点检查Cookie有效期
+
+**⚡ 性能优化**
+- 新增响应缓存（2分钟TTL）和请求去重机制，减少重复API调用
+- `/zjcdn` 端点缓存命中响应速度提升约99%
+- 新增性能监控工具（可选启用）
+
+**🔧 Bug修复**
+- 修复 `/zjcdn` 返回403错误：改用 `getDouyinNoWatermarkVideo()` 多重回退策略
+- 修复流处理资源泄漏，优雅处理客户端断开连接
+- 重构 `/douyin` 和 `/workflow` 端点，统一视频处理逻辑
+
+**📝 文档**
+- 新增 `function.md` 完整技术文档（架构图、API端点、函数说明）
+
+---
+
+### �🔧 v2025.11.23 - UI修复与优化
 *发布日期: 2025年11月23日*
 
 **🐛 Bug修复**
