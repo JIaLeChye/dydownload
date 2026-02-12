@@ -52,16 +52,12 @@ const checkSidGuardExpiry = (sidGuard) => {
             validitySeconds: null,
             gmtTime: null,
             currentTimestamp: null,
-            remainingSeconds: 0,
+            // remainingSeconds: 0,
             remainingTime: null
         }
     };
 
     try {
-        if (!sidGuard || typeof sidGuard !== 'string') {
-            result.error = 'sid_guard 参数无效或为空';
-            return result;
-        }
 
         const parts = sidGuard.split('|');
         if (parts.length !== 4) {
@@ -468,7 +464,10 @@ class Scraper {
                     if (zjcdnVariants.length > 0) {
                         console.log('📝 构建zjcdn变体:', zjcdnVariants.length, '个');
                         zjcdnUrls.push(...zjcdnVariants);
+
                     }
+                    console.log('🔗 可能的zjcdn链接列表:', zjcdnUrls.length);
+
                 }
             }
             
@@ -476,7 +475,7 @@ class Scraper {
             console.error('❌ 获取zjcdn链接失败:', error.message);
         }
         
-        return zjcdnUrls;
+        return x;
     }
 
     async getDouyinNoWatermarkVideo(videoData) {

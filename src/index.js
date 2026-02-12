@@ -51,6 +51,56 @@ class PerformanceMonitor {
 
 const perfMonitor = new PerformanceMonitor();
 
+// Helper function: Check if debug mode is enabled
+function isDebugMode(req) {
+    return (req.body && (req.body.debug == 1 || req.body.debug === true))
+        || (req.query && req.query.debug == 1)
+        || process.env.DEBUG_VIDEO_URLS === '1'
+        || process.env.DEBUG === '1';
+}
+
+// Helper function: Process Douyin video URL and return standardized response
+async function processDouyinVideo(url, debugMode = false) {
+    const douyinId = await scraper.getDouyinVideoId(url);
+    const douyinData = await scraper.getDouyinVideoData(douyinId);
+    let douyinUrls = await scraper.getDouyinNoWatermarkVideo(douyinData);
+    
+    // Check if it's an image share (media_type 2 or 42)
+    const isImagesShare = [2, 42].includes(douyinData.aweme_detail.media_type);
+    let imgUrls = [];
+    let videoUrls = [];
+    
+    if (isImagesShare) {
+        // Image share: douyinUrls contains all image links
+        imgUrls = douyinUrls || [];
+        videoUrls = [];
+    } else {
+        // Video share: only get video links, no cover images
+        videoUrls = douyinUrls || [];
+        imgUrls = [];
+    }
+    
+    // Filter to most stable URL in non-debug mode
+    if (!debugMode && Array.isArray(videoUrls) && videoUrls.length > 1) {
+        // Keep only the most stable aweme.snssdk.com interface or first one
+        const stable = videoUrls.find(u =>
+            (typeof u === 'string' && u.includes('aweme.snssdk.com/aweme/v1/play')) ||
+            (u && typeof u === 'object' && u.url && u.url.includes('aweme.snssdk.com/aweme/v1/play'))
+        );
+        videoUrls = [stable || videoUrls[0]];
+    }
+    
+    return { 
+        code: 0, 
+        data: { 
+            video: videoUrls, 
+            img: imgUrls, 
+            debugMode, 
+            isImagesShare 
+        } 
+    };
+}
+
 // Simple in-memory cache for API responses
 class SimpleCache {
     constructor(ttl = 60000) { // TTL in milliseconds (default: 60 seconds)
@@ -177,8 +227,40 @@ const checkCookieSidGuardExpiry = (cookieString) => {
     return checkSidGuardExpiry(sidGuard);
 };
 
-// 配置dotenv加载.env.local文件
-require('dotenv').config({ path: path.join(__dirname, '../.env.local') });
+// Auto-detect deployment environment and load appropriate configuration
+const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined;
+const isProduction = process.env.NODE_ENV === 'production';
+
+console.log('\n🔍 Environment Detection:');
+console.log(`   Platform: ${isVercel ? 'Vercel' : 'Local'}`);
+console.log(`   Node Environment: ${process.env.NODE_ENV || 'development'}`);
+
+if (!isVercel) {
+    // Local development: load .env.local file
+    const envPath = path.join(__dirname, '../.env.local');
+    console.log(`   Loading .env.local from: ${envPath}`);
+    
+    const envResult = require('dotenv').config({ path: envPath });
+    
+    if (envResult.error) {
+        console.error('   ❌ Failed to load .env.local:', envResult.error.message);
+    } else {
+        console.log('   ✅ .env.local loaded successfully');
+        console.log(`   📝 Found ${Object.keys(envResult.parsed || {}).length} environment variables`);
+    }
+} else {
+    // Vercel: use environment variables directly
+    console.log('   ✅ Using Vercel environment variables');
+}
+
+// Verify DOUYIN_COOKIE is available
+if (process.env.DOUYIN_COOKIE) {
+    const cookiePreview = maskSensitiveInfo(process.env.DOUYIN_COOKIE, 'cookie');
+    console.log(`   🍪 DOUYIN_COOKIE loaded: ${cookiePreview}`);
+} else {
+    console.warn('   ⚠️  WARNING: DOUYIN_COOKIE not found in environment!');
+}
+console.log('');
 
 const app = express()
 app.use(express.static(path.join(__dirname, '../public')))
@@ -243,7 +325,7 @@ app.post('/zjcdn', async (req, res) => {
 
             // 检查是否为图片集分享
             const isImagesShare = [2, 42].includes(douyinData.aweme_detail.media_type);
-
+            
             if (isImagesShare) {
                 // 图片集分享
                 let douyinUrls = await scraper.getDouyinNoWatermarkVideo(douyinData);
@@ -259,40 +341,23 @@ app.post('/zjcdn', async (req, res) => {
                         author: douyinData?.aweme_detail?.author?.nickname || ''
                     } 
                 };
-            } else {
-                // 视频分享 - 优先获取zjcdn直链
-                const zjcdnUrls = await scraper.getZjcdnDirectUrls(douyinData);
-                
-                if (zjcdnUrls.length > 0) {
-                    return { 
-                        code: 0, 
-                        data: { 
-                            video: zjcdnUrls, 
-                            img: [], 
-                            debugMode: false, 
-                            isImagesShare: false,
-                            method: 'zjcdn-direct',
-                            title: douyinData?.aweme_detail?.desc || '',
-                            author: douyinData?.aweme_detail?.author?.nickname || ''
-                        } 
-                    };
-                } else {
-                    // 回退到常规方法
-                    let douyinUrls = await scraper.getDouyinNoWatermarkVideo(douyinData);
-                    return { 
-                        code: 0, 
-                        data: { 
-                            video: douyinUrls || [], 
-                            img: [], 
-                            debugMode: false, 
-                            isImagesShare: false,
-                            method: 'zjcdn-fallback',
-                            title: douyinData?.aweme_detail?.desc || '',
-                            author: douyinData?.aweme_detail?.author?.nickname || ''
-                        } 
-                    };
-                }
             }
+            
+            // 视频分享 - 使用scraper的完整逻辑获取最佳视频URL
+            let douyinUrls = await scraper.getDouyinNoWatermarkVideo(douyinData);
+            
+            return { 
+                code: 0, 
+                data: { 
+                    video: douyinUrls || [], 
+                    img: [], 
+                    debugMode: false, 
+                    isImagesShare: false,
+                    method: 'zjcdn-auto',
+                    title: douyinData?.aweme_detail?.desc || '',
+                    author: douyinData?.aweme_detail?.author?.nickname || ''
+                } 
+            };
         });
         
         // Cache the result
@@ -437,98 +502,33 @@ app.post('/test-videoid', async (req, res) => {
 app.post('/douyin', async (req, res) => {
     const url = req.body.url;
     try {
-        const douyinId = await scraper.getDouyinVideoId(url);
-        const douyinData = await scraper.getDouyinVideoData(douyinId);
-        let douyinUrls = await scraper.getDouyinNoWatermarkVideo(douyinData);
-        
-        // 检查是否为图片集分享（media_type 为 2 或 42）
-        const isImagesShare = [2, 42].includes(douyinData.aweme_detail.media_type);
-        let imgUrls = [];
-        let videoUrls = [];
-        
-        if (isImagesShare) {
-            // 图片集分享：douyinUrls 包含所有图片链接
-            imgUrls = douyinUrls || [];
-            videoUrls = [];
-        } else {
-            // 视频分享：只获取视频链接，不包含封面图
-            videoUrls = douyinUrls || [];
-            imgUrls = [];
-        }
-
-        // 判断是否开启调试模式（返回所有候选链接）
-        const debugMode = (req.body && (req.body.debug == 1 || req.body.debug === true))
-            || (req.query && req.query.debug == 1)
-            || process.env.DEBUG_VIDEO_URLS === '1'
-            || process.env.DEBUG === '1';
-
-        if (!debugMode && Array.isArray(videoUrls) && videoUrls.length > 1) {
-            // 只保留最稳定的 aweme.snssdk.com 接口或第一个
-            const stable = videoUrls.find(u =>
-                (typeof u === 'string' && u.includes('aweme.snssdk.com/aweme/v1/play')) ||
-                (u && typeof u === 'object' && u.url && u.url.includes('aweme.snssdk.com/aweme/v1/play'))
-            );
-            videoUrls = [stable || videoUrls[0]];
-        }
-
-        // 不再使用SuperDownloader - 已移除
-
-    res.send({ code: 0, data: { video: videoUrls, img: imgUrls, debugMode, isImagesShare } })
+        const debugMode = isDebugMode(req);
+        const result = await processDouyinVideo(url, debugMode);
+        res.send(result);
     } catch (e) {
-        console.log('error', e)
-        res.send({ code: 1, msg: String(e), data: null })
+        console.log('error', e);
+        res.send({ code: 1, msg: String(e), data: null });
     }
 })
 
 app.post('/workflow', async (req, res) => {
     const url = req.body.url;
     try {
-        const isHomeUrl = url.indexOf('查看TA的更多作品') !== -1
+        const isHomeUrl = url.indexOf('查看TA的更多作品') !== -1;
+        
         if (!isHomeUrl) {
-            const douyinId = await scraper.getDouyinVideoId(url);
-            const douyinData = await scraper.getDouyinVideoData(douyinId);
-            let douyinUrls = await scraper.getDouyinNoWatermarkVideo(douyinData);
-            
-            // 检查是否为图片集分享（media_type 为 2 或 42）
-            const isImagesShare = [2, 42].includes(douyinData.aweme_detail.media_type);
-            let imgUrls = [];
-            let videoUrls = [];
-            
-            if (isImagesShare) {
-                // 图片集分享：douyinUrls 包含所有图片链接
-                imgUrls = douyinUrls || [];
-                videoUrls = [];
-            } else {
-                // 视频分享：只获取视频链接，不包含封面图
-                videoUrls = douyinUrls || [];
-                imgUrls = [];
-            }
-            
-            // 判断是否开启调试模式（返回所有候选链接）
-            const debugMode = (req.body && (req.body.debug == 1 || req.body.debug === true))
-                || (req.query && req.query.debug == 1)
-                || process.env.DEBUG_VIDEO_URLS === '1'
-                || process.env.DEBUG === '1';
-
-            if (!debugMode && Array.isArray(videoUrls) && videoUrls.length > 1) {
-                // 只保留最稳定的 aweme.snssdk.com 接口或第一个
-                const stable = videoUrls.find(u =>
-                    (typeof u === 'string' && u.includes('aweme.snssdk.com/aweme/v1/play')) ||
-                    (u && typeof u === 'object' && u.url && u.url.includes('aweme.snssdk.com/aweme/v1/play'))
-                );
-                videoUrls = [stable || videoUrls[0]];
-            }
-
-            res.send({ code: 0, data: { video: videoUrls, img: imgUrls, debugMode, isImagesShare } })
+            const debugMode = isDebugMode(req);
+            const result = await processDouyinVideo(url, debugMode);
+            res.send(result);
         } else {
-            const sec_user_id = await scraper.getUserSecUidByShareUrl(url)
-            const result = await scraper.getHomeVideos(sec_user_id)
-            const urls = result.map(i => i.url).flat(Infinity)
-            res.send({ code: 0, data: urls })
+            const sec_user_id = await scraper.getUserSecUidByShareUrl(url);
+            const result = await scraper.getHomeVideos(sec_user_id);
+            const urls = result.map(i => i.url).flat(Infinity);
+            res.send({ code: 0, data: urls });
         }
     } catch (e) {
-        console.log('error', e)
-        res.send({ code: 1, msg: String(e), data: null })
+        console.log('error', e);
+        res.send({ code: 1, msg: String(e), data: null });
     }
 })
 
@@ -625,7 +625,7 @@ app.get('/proxy-download', async (req, res) => {
             res.setHeader('Content-Length', contentLength);
         }
 
-        // 改进: 使用 pipeline 确保正确的错误处理和资源清理
+        // 使用 pipeline 确保正确的错误处理和资源清理
         await pipelineAsync(response.body, res);
 
     } catch (error) {
@@ -790,6 +790,37 @@ app.post('/api/update-cookie', async (req, res) => {
             console.log('⏰ 剩余时间:', sidGuardStatus.details.remainingTime);
         }
 
+        // 💾 本地环境：同步更新 .env.local 文件，确保重启后cookie依然是最新的
+        let localFileUpdated = false;
+        if (!isVercel) {
+            try {
+                const envPath = path.join(__dirname, '../.env.local');
+                let envContent = '';
+                
+                // 尝试读取现有文件
+                if (fs.existsSync(envPath)) {
+                    envContent = fs.readFileSync(envPath, 'utf-8');
+                }
+                
+                // 更新或添加 DOUYIN_COOKIE
+                if (envContent.includes('DOUYIN_COOKIE=')) {
+                    // 替换现有的 DOUYIN_COOKIE 值
+                    envContent = envContent.replace(/DOUYIN_COOKIE=.*/g, `DOUYIN_COOKIE=${finalCookie}`);
+                } else {
+                    // 添加新的 DOUYIN_COOKIE
+                    envContent = envContent.trim() + (envContent ? '\n' : '') + `DOUYIN_COOKIE=${finalCookie}\n`;
+                }
+                
+                // 写入文件
+                fs.writeFileSync(envPath, envContent, 'utf-8');
+                console.log('💾 .env.local 文件已更新，重启后依然有效');
+                localFileUpdated = true;
+            } catch (fileError) {
+                console.error('⚠️ .env.local 文件更新失败:', fileError.message);
+                // 不中断流程，因为环境变量已经更新
+            }
+        }
+
         let vercelUpdateResult = null;
         let message = '🎉 Cookie已更新并立即生效！无需重新部署 🚀';
         let immediate = true;
@@ -807,16 +838,26 @@ app.post('/api/update-cookie', async (req, res) => {
                         'encrypted',
                         ['production', 'preview']
                     );
-                    message = '🎉 Cookie立即生效 + Vercel环境变量已备份 🚀';
+                    message = localFileUpdated 
+                        ? '🎉 Cookie立即生效 + .env.local已更新 + Vercel环境变量已备份 🚀'
+                        : '🎉 Cookie立即生效 + Vercel环境变量已备份 🚀';
                 } catch (vercelError) {
                     console.error('Vercel环境变量更新失败:', vercelError);
-                    message = '🎉 Cookie已立即生效！Vercel备份失败: ' + vercelError.message;
+                    message = localFileUpdated
+                        ? '🎉 Cookie已立即生效 + .env.local已更新！Vercel备份失败: ' + vercelError.message
+                        : '🎉 Cookie已立即生效！Vercel备份失败: ' + vercelError.message;
                 }
             } else {
-                message = '🎉 Cookie已立即生效！(Vercel配置不完整，但主要功能正常) 🚀';
+                message = localFileUpdated
+                    ? '🎉 Cookie已立即生效 + .env.local已更新！(Vercel配置不完整，但主要功能正常) 🚀'
+                    : '🎉 Cookie已立即生效！(Vercel配置不完整，但主要功能正常) 🚀';
             }
         } else if (updateVercel && !vercelEnv) {
-            message = '🎉 Cookie已立即生效！(Vercel自动同步功能未启用，但主要功能正常) 🚀';
+            message = localFileUpdated
+                ? '🎉 Cookie已立即生效 + .env.local已更新！(Vercel自动同步功能未启用，但主要功能正常) 🚀'
+                : '🎉 Cookie已立即生效！(Vercel自动同步功能未启用，但主要功能正常) 🚀';
+        } else if (localFileUpdated) {
+            message = '🎉 Cookie已更新并立即生效 + .env.local已保存！重启后依然有效 🚀';
         }
 
         res.json({ 
@@ -824,6 +865,7 @@ app.post('/api/update-cookie', async (req, res) => {
             message,
             immediate,
             noRedeployNeeded,
+            localFileUpdated,
             sidGuardStatus: {
                 isValid: sidGuardStatus.isValid,
                 isExpired: sidGuardStatus.isExpired,
@@ -841,13 +883,15 @@ app.post('/api/update-cookie', async (req, res) => {
     }
 });
 
-// 新增：Cookie 状态检查API - 检测当前 sid_guard 是否过期
+// Cookie 状态检查API - 检测当前 sid_guard 是否过期
 app.get('/api/cookie-status', (req, res) => {
     try {
-        // 重新加载 .env.local 文件以确保获取最新值
-        require('dotenv').config({ path: path.join(__dirname, '../.env.local') });
+        // 重新加载环境变量以确保获取最新值 (仅在本地环境)
+        if (!isVercel) {
+            require('dotenv').config({ path: path.join(__dirname, '../.env.local') });
+        }
         
-        // 首先尝试从环境变量获取（.env.local中的值）
+        // 首先尝试从环境变量获取（.env.local中的值或Vercel环境变量）
         let currentCookie = process.env.DOUYIN_COOKIE;
         let cookieSource = 'environment';
         
@@ -935,7 +979,7 @@ app.get('/api/cookie-status', (req, res) => {
     }
 });
 
-// 新增：Vercel配置状态检查API
+// Vercel配置状态检查API
 app.get('/api/vercel-config', (req, res) => {
     if (!vercelEnv) {
         return res.json({
