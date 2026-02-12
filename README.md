@@ -11,7 +11,7 @@
         <img alt="基于项目" src="https://img.shields.io/badge/基于-douyin__no__watermark-blue">
     </a>
     <a href="https://github.com/JIaLeChye/dydownload">
-        <img alt="当前版本" src="https://img.shields.io/badge/版本-2025.11-brightgreen">
+        <img alt="当前版本" src="https://img.shields.io/badge/版本-2026.02-brightgreen">
     </a>
 </p>
 
