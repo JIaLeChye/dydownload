@@ -475,7 +475,7 @@ class Scraper {
             console.error('❌ 获取zjcdn链接失败:', error.message);
         }
         
-        return x;
+        return zjcdnUrls;
     }
 
     async getDouyinNoWatermarkVideo(videoData) {
