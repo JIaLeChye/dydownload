@@ -230,6 +230,7 @@ const checkCookieSidGuardExpiry = (cookieString) => {
 // Auto-detect deployment environment and load appropriate configuration
 const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined;
 const isProduction = process.env.NODE_ENV === 'production';
+const envLocalPath = process.env.ENV_LOCAL_PATH || path.join(__dirname, '../.env.local');
 
 console.log('\n🔍 Environment Detection:');
 console.log(`   Platform: ${isVercel ? 'Vercel' : 'Local'}`);
@@ -237,16 +238,27 @@ console.log(`   Node Environment: ${process.env.NODE_ENV || 'development'}`);
 
 if (!isVercel) {
     // Local development: load .env.local file
-    const envPath = path.join(__dirname, '../.env.local');
-    console.log(`   Loading .env.local from: ${envPath}`);
-    
-    const envResult = require('dotenv').config({ path: envPath });
-    
-    if (envResult.error) {
-        console.error('   ❌ Failed to load .env.local:', envResult.error.message);
-    } else {
-        console.log('   ✅ .env.local loaded successfully');
-        console.log(`   📝 Found ${Object.keys(envResult.parsed || {}).length} environment variables`);
+    console.log(`   Loading .env.local from: ${envLocalPath}`);
+
+    try {
+        if (fs.existsSync(envLocalPath) && fs.statSync(envLocalPath).isDirectory()) {
+            console.warn(`   ⚠️  ENV_LOCAL_PATH points to a directory: ${envLocalPath}`);
+            console.warn('   ⚠️  Skip loading .env.local. Please set ENV_LOCAL_PATH to a file path.');
+        } else {
+            const envResult = require('dotenv').config({ path: envLocalPath });
+            if (envResult.error) {
+                if (envResult.error.code === 'ENOENT') {
+                    console.log('   ℹ️  .env.local not found yet. It will be created when Cookie is updated from web UI.');
+                } else {
+                    console.error('   ❌ Failed to load .env.local:', envResult.error.message);
+                }
+            } else {
+                console.log('   ✅ .env.local loaded successfully');
+                console.log(`   📝 Found ${Object.keys(envResult.parsed || {}).length} environment variables`);
+            }
+        }
+    } catch (envLoadError) {
+        console.error('   ❌ Failed to check .env.local path:', envLoadError.message);
     }
 } else {
     // Vercel: use environment variables directly
@@ -794,11 +806,17 @@ app.post('/api/update-cookie', async (req, res) => {
         let localFileUpdated = false;
         if (!isVercel) {
             try {
-                const envPath = path.join(__dirname, '../.env.local');
+                const envPath = envLocalPath;
                 let envContent = '';
+
+                // Ensure parent directory exists when using mounted data path.
+                fs.mkdirSync(path.dirname(envPath), { recursive: true });
                 
                 // 尝试读取现有文件
                 if (fs.existsSync(envPath)) {
+                    if (fs.statSync(envPath).isDirectory()) {
+                        throw new Error(`.env.local 路径是目录而不是文件: ${envPath}`);
+                    }
                     envContent = fs.readFileSync(envPath, 'utf-8');
                 }
                 
@@ -888,7 +906,9 @@ app.get('/api/cookie-status', (req, res) => {
     try {
         // 重新加载环境变量以确保获取最新值 (仅在本地环境)
         if (!isVercel) {
-            require('dotenv').config({ path: path.join(__dirname, '../.env.local') });
+            if (fs.existsSync(envLocalPath) && !fs.statSync(envLocalPath).isDirectory()) {
+                require('dotenv').config({ path: envLocalPath, override: true });
+            }
         }
         
         // 首先尝试从环境变量获取（.env.local中的值或Vercel环境变量）

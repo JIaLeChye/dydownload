@@ -1,0 +1,15 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dydownload
+    environment:
+      - ENV_LOCAL_PATH=/app/data/.env.local
+    ports:
+      - "3000:3000"
+    volumes:
+      - type: bind
+        source: ./data
+        target: /app/data
+    restart: unless-stopped
