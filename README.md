@@ -452,6 +452,23 @@ FetchError: invalid json response body at https://www.douyin.com/aweme/v1/web/aw
 
 ## 📅 更新日志
 
+### 🚀 v2026.3.27
+*发布日期: 2026年3月27日*
+
+**🐳 Docker Compose 加固**
+- 改为目录挂载：宿主机 `./data` -> 容器 `/app/data`
+- 新增 `ENV_LOCAL_PATH=/app/data/.env.local`，首次运行无需预建 `.env.local`
+- 用户在网页更新 Cookie 后会自动创建并写入 `./data/.env.local`
+
+**🔧 配置与兼容性**
+- 启动阶段优化 `.env.local` 路径检测与缺失处理，避免首次启动报错
+- Cookie 状态检查接口统一使用可配置 env 路径读取最新值
+
+**📝 文档更新**
+- 新增并完善 Docker Compose 部署说明与持久化说明
+
+---
+
 ### 🚀 v2026.2.12
 *发布日期: 2026年2月12日*
 
