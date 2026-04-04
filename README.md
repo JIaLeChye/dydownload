@@ -13,6 +13,15 @@
     <a href="https://github.com/JIaLeChye/dydownload">
         <img alt="当前版本" src="https://img.shields.io/badge/版本-2026.02-brightgreen">
     </a>
+  <a href="https://www.docker.com/">
+    <img alt="Docker" src="https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white">
+  </a>
+  <a href="https://vercel.com/">
+    <img alt="Vercel" src="https://img.shields.io/badge/Vercel-Deploy-000000?logo=vercel&logoColor=white">
+  </a>
+  <a href="https://nodejs.org/">
+    <img alt="Node.js" src="https://img.shields.io/badge/Node.js-%3E%3D18.17-339933?logo=node.js&logoColor=white">
+  </a>
 </p>
 
 </div>
@@ -140,10 +149,51 @@ STABLE_VIDEO_ONLY=1         # 只使用稳定的API接口
 
 #### 💡 本地部署注意事项
 - ✅ Cookie配置在 `.env.local` 文件中，重启服务器后持久有效
-- ✅ 网页界面更新Cookie仅在当前会话有效，重启后恢复配置文件中的值
+- ✅ 网页界面更新Cookie会同步写入 `.env.local`，重启后依然有效
 - ✅ 建议在 `.env.local` 中配置稳定的长期Cookie
 - ⚡ 性能监控默认关闭，开启后可查看详细性能指标
 - 🔄 Cookie过期时可先用网页更新应急，再更新配置文件
+
+---
+
+### 🐳 Docker Compose 部署
+
+这是最简单的运行方式，自带环境隔离与自动更新。
+
+#### 快速启动
+
+```bash
+# 1. 下载代码
+git clone https://github.com/JIaLeChye/dydownload.git
+cd dydownload
+
+# 2. 启动服务（会自动处理依赖和构建）
+docker compose up -d
+```
+
+访问 http://localhost:3000 即可开始使用。
+
+#### 💾 持久化说明
+
+- 无需手动创建配置：应用启动后，只需在网页端点击 🍪 图标更新 Cookie，系统会自动创建持久化文件。
+- 数据安全：SID 会保存在宿主机的 `./data/.env.local` 中。即使你更新镜像或重启 Docker，你的登录状态也不会丢失。
+- 挂载逻辑：`docker-compose.yml` 已配置将本地 `./data` 映射至容器 `/app/data`，并自动设置环境变量指向该路径。
+
+#### 常用命令
+
+```bash
+# 查看实时日志（排查问题很有用）
+docker compose logs -f
+
+# 更新应用（当 GitHub 代码有更新时）
+git pull
+docker compose up -d --build
+
+# 停止并清理容器
+docker compose down
+```
+
+**⚠️重要: 确保 .gitignore 文件不被删除否则你的sid将会暴露！**
 
 ---
 
@@ -401,6 +451,23 @@ FetchError: invalid json response body at https://www.douyin.com/aweme/v1/web/aw
 ---
 
 ## 📅 更新日志
+
+### 🚀 v2026.3.27
+*发布日期: 2026年3月27日*
+
+**🐳 Docker Compose 加固**
+- 改为目录挂载：宿主机 `./data` -> 容器 `/app/data`
+- 新增 `ENV_LOCAL_PATH=/app/data/.env.local`，首次运行无需预建 `.env.local`
+- 用户在网页更新 Cookie 后会自动创建并写入 `./data/.env.local`
+
+**🔧 配置与兼容性**
+- 启动阶段优化 `.env.local` 路径检测与缺失处理，避免首次启动报错
+- Cookie 状态检查接口统一使用可配置 env 路径读取最新值
+
+**📝 文档更新**
+- 新增并完善 Docker Compose 部署说明与持久化说明
+
+---
 
 ### 🚀 v2026.2.12
 *发布日期: 2026年2月12日*

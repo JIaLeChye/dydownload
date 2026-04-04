@@ -63,14 +63,46 @@ class VercelEnvManager {
             
             // 首先检查环境变量是否存在
             const existingVars = await this.getEnvironmentVariables();
-            const existingVar = existingVars.find(env => env.key === key);
+            const matchingVars = existingVars.filter(env => env.key === key);
 
-            if (existingVar) {
-                // 更新现有环境变量
-                return await this.updateExistingVar(existingVar.id, key, value, type, target);
+            if (matchingVars.length > 0) {
+                // 某些项目会为不同 target 创建多条同名变量，逐条更新避免只更新一条导致“看起来没生效”
+                const results = [];
+                for (const envVar of matchingVars) {
+                    const envType = envVar.type || type;
+                    const envTarget = Array.isArray(envVar.target) && envVar.target.length > 0
+                        ? envVar.target
+                        : target;
+                    const customEnvironmentIds = Array.isArray(envVar.customEnvironmentIds)
+                        ? envVar.customEnvironmentIds
+                        : undefined;
+
+                    const result = await this.updateExistingVar(
+                        envVar.id,
+                        key,
+                        value,
+                        envType,
+                        envTarget,
+                        customEnvironmentIds
+                    );
+                    results.push(result);
+                }
+
+                return {
+                    updated: true,
+                    updatedCount: results.length,
+                    created: false,
+                    results
+                };
             } else {
                 // 创建新环境变量
-                return await this.createNewVar(key, value, type, target);
+                const created = await this.createNewVar(key, value, type, target);
+                return {
+                    updated: false,
+                    updatedCount: 0,
+                    created: true,
+                    results: [created]
+                };
             }
         } catch (error) {
             console.error('更新环境变量失败:', error.response?.data || error.message);
@@ -104,7 +136,7 @@ class VercelEnvManager {
     /**
      * 更新现有环境变量
      */
-    async updateExistingVar(envId, key, value, type, target) {
+    async updateExistingVar(envId, key, value, type, target, customEnvironmentIds) {
         let url = `${this.apiBase}/v9/projects/${this.projectId}/env/${envId}`;
         if (this.teamId) {
             url += `?teamId=${this.teamId}`;
@@ -116,6 +148,10 @@ class VercelEnvManager {
             type,
             target
         };
+
+        if (Array.isArray(customEnvironmentIds) && customEnvironmentIds.length > 0) {
+            payload.customEnvironmentIds = customEnvironmentIds;
+        }
 
         const response = await axios.patch(url, payload, {
             headers: this.getHeaders()

@@ -7,3 +7,7 @@ dist/**
 .env.local
 .env.*.local
 pnpm-lock.yaml
+# 忽略 Docker 持久化数据目录
+data/
+# 忽略任何可能生成的本地环境文件
+.env.local

@@ -1,7 +1,19 @@
-FROM ubuntu:18.04
-COPY ./dist/oimi-tk-linux-x64 /app/
+FROM node:20-alpine AS production
+
 WORKDIR /app
-CMD chmod +x oimi-tk-linux-x64
+
+# Install production dependencies first for better layer cache reuse.
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
+# Copy only runtime files required by the server.
+COPY src ./src
+COPY bin ./bin
+COPY public ./public
+COPY README.md ./README.md
+COPY function.md ./function.md
+
+ENV NODE_ENV=production
 EXPOSE 3000
 
-ENTRYPOINT ["./oimi-tk-linux-x64"]
+CMD ["node", "src/index.js"]
