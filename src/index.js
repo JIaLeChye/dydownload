@@ -775,12 +775,12 @@ app.post('/api/update-cookie', async (req, res) => {
         let finalCookie = cookie.trim();
 
         // 智能格式处理
-        if (cookie.includes('sid_guard=')) {
+        if (finalCookie.includes('sid_guard=')) {
             // 完整cookie格式
-            finalCookie = cookie;
-        } else if (cookie.includes('%7C')) {
+            finalCookie = finalCookie;
+        } else if (finalCookie.includes('%7C')) {
             // 只有sid_guard值，自动包装
-            finalCookie = `sid_guard=${cookie};`;
+            finalCookie = `sid_guard=${finalCookie};`;
         } else {
             return res.status(400).json({ success: false, message: 'Cookie格式不正确' });
         }
@@ -850,12 +850,30 @@ app.post('/api/update-cookie', async (req, res) => {
             
             if (configStatus.isConfigured) {
                 try {
+                    // 更新标准变量名
                     vercelUpdateResult = await vercelEnv.updateEnvironmentVariable(
                         'DOUYIN_COOKIE', 
                         finalCookie,
                         'encrypted',
                         ['production', 'preview']
                     );
+
+                    // 兼容历史拼写错误: 若项目已存在 DOUYIN_COOCKIE，也同步更新避免“看起来没生效”
+                    try {
+                        const allVercelVars = await vercelEnv.getEnvironmentVariables();
+                        const hasLegacyTypoKey = allVercelVars.some(env => env.key === 'DOUYIN_COOCKIE');
+                        if (hasLegacyTypoKey) {
+                            await vercelEnv.updateEnvironmentVariable(
+                                'DOUYIN_COOCKIE',
+                                finalCookie,
+                                'encrypted',
+                                ['production', 'preview']
+                            );
+                        }
+                    } catch (legacySyncError) {
+                        console.warn('同步历史变量 DOUYIN_COOCKIE 失败:', legacySyncError.message);
+                    }
+
                     message = localFileUpdated 
                         ? '🎉 Cookie立即生效 + .env.local已更新 + Vercel环境变量已备份 🚀'
                         : '🎉 Cookie立即生效 + Vercel环境变量已备份 🚀';
