@@ -9,6 +9,7 @@ const os = require('os')
 const { pipeline } = require('stream')
 const { promisify } = require('util')
 const { spawn } = require('child_process')
+const rateLimit = require('express-rate-limit')
 const { marked } = require('marked')
 
 const pipelineAsync = promisify(pipeline)
@@ -52,34 +53,6 @@ class PerformanceMonitor {
 }
 
 const perfMonitor = new PerformanceMonitor();
-
-class SimpleRateLimiter {
-    constructor(limit = 8, windowMs = 60000) {
-        this.limit = limit;
-        this.windowMs = windowMs;
-        this.requests = new Map();
-    }
-
-    middleware() {
-        return (req, res, next) => {
-            const key = req.ip || req.headers['x-forwarded-for'] || 'unknown';
-            const now = Date.now();
-            const bucket = this.requests.get(key) || [];
-            const recent = bucket.filter(ts => now - ts < this.windowMs);
-
-            if (recent.length >= this.limit) {
-                return res.status(429).json({
-                    success: false,
-                    message: '请求过于频繁，请稍后再试'
-                });
-            }
-
-            recent.push(now);
-            this.requests.set(key, recent);
-            next();
-        };
-    }
-}
 
 function isValidHttpUrl(url) {
     try {
@@ -410,7 +383,18 @@ const videoDataCache = new SimpleCache(120000); // 2 minutes for video data
 videoDataCache.startCleanup();
 
 const requestDeduplicator = new RequestDeduplicator();
-const cookieUpdateRateLimiter = new SimpleRateLimiter(8, 60000);
+const proxyDownloadRateLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false
+});
+const cookieUpdateRateLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 8,
+    standardHeaders: true,
+    legacyHeaders: false
+});
 
 /**
  * 从 Cookie 字符串中提取并检测 sid_guard
@@ -839,7 +823,7 @@ const getReadmeContent = async () => {
 }
 
 // 服务器端代理下载 - 用户点击下载按钮直接下载，不跳转链接
-app.get('/proxy-download', async (req, res) => {
+app.get('/proxy-download', proxyDownloadRateLimiter, async (req, res) => {
     const { url, filename } = req.query;
     const audioOnly = req.query.audioOnly === '1' || req.query.audioOnly === 'true';
     
@@ -1065,7 +1049,7 @@ try {
   vercelEnv = null;
 }
 
-app.post('/api/update-cookie', cookieUpdateRateLimiter.middleware(), async (req, res) => {
+app.post('/api/update-cookie', cookieUpdateRateLimiter, async (req, res) => {
     try {
         const { cookie, updateVercel = false } = req.body;
         
