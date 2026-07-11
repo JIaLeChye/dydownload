@@ -4,6 +4,7 @@ const body = document.body;
 
 // Global variables
 let currentMediaItems = [];
+let currentDownloadMode = 'video';
 
 // Performance constants
 const PERF_CONSTANTS = {
@@ -118,7 +119,9 @@ document.addEventListener("DOMContentLoaded", function () {
         return;
       }
 
-      const requestData = { url: videoUrl };
+      const selectedMode = document.getElementById("downloadMode")?.value === 'audio' ? 'audio' : 'video';
+      currentDownloadMode = selectedMode;
+      const requestData = { url: videoUrl, mode: selectedMode };
       const loadingDom = document.getElementById("loading");
       const submitText = document.getElementById("submit-text");
       
@@ -126,8 +129,8 @@ document.addEventListener("DOMContentLoaded", function () {
       if (loadingDom) loadingDom.hidden = false;
       if (submitText) submitText.textContent = "解析中...";
       
-      // 首先尝试zjcdn API（最稳定）
-      fetch("/zjcdn", {
+      // 统一多平台解析接口
+      fetch("/extract", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -145,11 +148,11 @@ document.addEventListener("DOMContentLoaded", function () {
           if (data.code === 0) {
             handleApiResponse(data);
           } else {
-            throw new Error(data.msg || 'zjcdn API返回错误');
+            throw new Error(data.msg || 'extract API返回错误');
           }
         })
         .catch((error) => {
-          console.error("zjcdn API失败，回退到workflow API:", error);
+          console.error("extract API失败:", error);
           
           // 检查是否是URL过期错误
           let errorMessage = error.message || '';
@@ -157,9 +160,18 @@ document.addEventListener("DOMContentLoaded", function () {
               errorMessage.includes('can\'t get videoId')) {
             showToast('⚠️ 链接可能已过期，请使用新的抖音分享链接', 'warning');
           }
-          
-          // 回退到workflow API
-          fetch("/workflow", {
+
+          const isDouyinUrl = videoUrl.includes('douyin.com') || videoUrl.includes('dy.toutiao.com');
+          if (!isDouyinUrl) {
+            if (loadingDom) loadingDom.hidden = true;
+            if (submitText) submitText.textContent = "解析";
+            showToast(`❌ 解析失败: ${error.message || '未知错误'}`, 'error');
+            resetInterface();
+            return;
+          }
+
+          // Douyin 回退到历史接口
+          fetch("/zjcdn", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -173,24 +185,35 @@ document.addEventListener("DOMContentLoaded", function () {
               return response.json();
             })
             .then((data) => {
-
+              if (data.code === 0) {
+                handleApiResponse(data);
+                return;
+              }
+              throw new Error(data.msg || 'zjcdn API返回错误');
+            })
+            .catch(() => fetch("/workflow", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(requestData),
+            }))
+            .then((response) => {
+              if (!response) return null;
+              if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+              }
+              return response.json();
+            })
+            .then((data) => {
+              if (!data) return;
               handleApiResponse(data);
             })
             .catch((fallbackError) => {
               console.error("所有API都失败了!", fallbackError);
               if (loadingDom) loadingDom.hidden = true;
               if (submitText) submitText.textContent = "解析";
-              
-              // 显示更详细的错误信息
-              let errorMsg = "解析失败";
-              if (fallbackError.message.includes('无法从任何用户代理获取videoId') || 
-                  fallbackError.message.includes('can\'t get videoId')) {
-                errorMsg = "抖音链接已过期或无效，请使用新的分享链接";
-              } else if (fallbackError.message.includes('网络')) {
-                errorMsg = "网络连接失败，请检查网络连接";
-              }
-              
-              showToast('❌ ' + errorMsg, 'error');
+              showToast('❌ 解析失败: ' + (fallbackError.message || '未知错误'), 'error');
               resetInterface();
             });
         });
@@ -206,6 +229,9 @@ function handleApiResponse(data) {
   if (submitText) submitText.textContent = "解析";
 
   if (data.code === 0 && data.data) {
+    if (data.data.requestedMode === 'audio' || data.data.requestedMode === 'video') {
+      currentDownloadMode = data.data.requestedMode;
+    }
     const debugMode = !!data.data.debugMode;
     let allUrls = [];
     let urlsWithType = []; // 新增：带类型信息的URL数组
@@ -420,8 +446,10 @@ function downloadMedia(url, index, isBatchDownload = false) {
     // 确定文件类型
     const mediaItem = document.querySelector(`[data-index="${index}"]`);
     const isImage = mediaItem && mediaItem.querySelector('img');
-    const filePrefix = isImage ? 'douyin_image' : 'douyin_video';
-    const fileName = `${filePrefix}_${timestamp}_${index + 1}${extension}`;
+    const isAudioOnly = !isImage && currentDownloadMode === 'audio';
+    const filePrefix = isImage ? 'media_image' : (isAudioOnly ? 'media_audio' : 'media_video');
+    const finalExtension = isAudioOnly ? '.mp3' : extension;
+    const fileName = `${filePrefix}_${timestamp}_${index + 1}${finalExtension}`;
 
     // 检查是否为视频文件（包括 zjcdn 域名和 mp4 扩展名）
     const isVideoFile = !isImage && (
@@ -434,9 +462,9 @@ function downloadMedia(url, index, isBatchDownload = false) {
     // 视频文件直接使用代理下载，避免 403 错误
     if (isVideoFile) {
       if (!isBatchDownload) {
-        showToast('🔄 视频文件使用服务器代理下载', 'info');
+        showToast(isAudioOnly ? '🔄 音频提取中（服务器代理）' : '🔄 视频文件使用服务器代理下载', 'info');
       }
-      proxyDownload(url, fileName, isBatchDownload);
+      proxyDownload(url, fileName, isBatchDownload, isAudioOnly);
       return;
     }
 
@@ -505,17 +533,17 @@ function downloadMedia(url, index, isBatchDownload = false) {
     
     // 如果连初始化都失败，直接使用代理下载
     const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
-    const fileName = `douyin_media_${timestamp}_${index + 1}.mp4`;
-    proxyDownload(url, fileName, isBatchDownload);
+    const fileName = `media_${timestamp}_${index + 1}.mp4`;
+    proxyDownload(url, fileName, isBatchDownload, false);
   }
 }
 
-function proxyDownload(url, fileName, isBatchDownload = false) {
+function proxyDownload(url, fileName, isBatchDownload = false, audioOnly = false) {
   try {
     // 使用服务器代理下载
 
     // 构建代理下载URL
-    const proxyUrl = `/proxy-download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(fileName)}`;
+    const proxyUrl = `/proxy-download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(fileName)}${audioOnly ? '&audioOnly=1' : ''}`;
     
     // 创建下载链接
     const link = document.createElement('a');
@@ -1021,9 +1049,10 @@ class DownloadManager extends EventTarget {
   // 执行实际下载
   async executeDownload(task) {
     const isVideo = task.type === 'video' || this.isVideoFile(task.url);
+    const audioOnly = isVideo && currentDownloadMode === 'audio';
     
     if (isVideo) {
-      return this.proxyDownloadWithProgress(task);
+      return this.proxyDownloadWithProgress(task, audioOnly);
     } else {
       return this.directDownloadWithProgress(task);
     }
@@ -1070,11 +1099,11 @@ class DownloadManager extends EventTarget {
   }
 
   // 代理下载（视频）
-  async proxyDownloadWithProgress(task) {
+  async proxyDownloadWithProgress(task, audioOnly = false) {
     return new Promise((resolve, reject) => {
       try {
         // 构建代理下载URL
-        const proxyUrl = `/proxy-download?url=${encodeURIComponent(task.url)}&filename=${encodeURIComponent(task.filename)}`;
+        const proxyUrl = `/proxy-download?url=${encodeURIComponent(task.url)}&filename=${encodeURIComponent(task.filename)}${audioOnly ? '&audioOnly=1' : ''}`;
         
         // 创建下载链接
         const link = document.createElement('a');
@@ -1129,8 +1158,9 @@ class DownloadManager extends EventTarget {
   generateFilename(item, index) {
     const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
     const isImage = item.type === 'image';
-    const extension = this.getFileExtension(item.url);
-    const prefix = isImage ? 'douyin_image' : 'douyin_video';
+    const isAudioOnly = !isImage && currentDownloadMode === 'audio';
+    const extension = isAudioOnly ? '.mp3' : this.getFileExtension(item.url);
+    const prefix = isImage ? 'media_image' : (isAudioOnly ? 'media_audio' : 'media_video');
     
     return `${prefix}_${timestamp}_${index + 1}${extension}`;
   }
@@ -2815,4 +2845,3 @@ function hideDownloadProgress() {
     progressBar.classList.remove('show');
   }
 }
-

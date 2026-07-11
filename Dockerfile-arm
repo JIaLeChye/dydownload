@@ -2,6 +2,9 @@ FROM --platform=linux/arm64 node:20-alpine AS production
 
 WORKDIR /app
 
+RUN apk add --no-cache ffmpeg python3 py3-pip \
+    && pip3 install --no-cache-dir --break-system-packages you-get
+
 # Install production dependencies first for better layer cache reuse.
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev

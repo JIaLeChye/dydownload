@@ -5,8 +5,10 @@ const { maskSensitiveInfo, formatRemainingTime, checkSidGuardExpiry } = require(
 const express = require('express')
 const path = require('path')
 const fs = require('fs')
+const os = require('os')
 const { pipeline } = require('stream')
 const { promisify } = require('util')
+const { spawn } = require('child_process')
 const { marked } = require('marked')
 
 const pipelineAsync = promisify(pipeline)
@@ -51,6 +53,82 @@ class PerformanceMonitor {
 
 const perfMonitor = new PerformanceMonitor();
 
+function isValidHttpUrl(url) {
+    try {
+        const parsed = new URL(url);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch (error) {
+        return false;
+    }
+}
+
+function getSafeReferer(url) {
+    try {
+        const parsed = new URL(url);
+        return `${parsed.origin}/`;
+    } catch (error) {
+        return 'https://www.douyin.com/';
+    }
+}
+
+function normalizeMessage(error) {
+    if (!error) return '未知错误';
+    if (typeof error === 'string') return error;
+    if (error.message) return error.message;
+    return String(error);
+}
+
+function extractFirstJsonObject(rawText) {
+    if (!rawText || typeof rawText !== 'string') return null;
+    const firstBrace = rawText.indexOf('{');
+    const lastBrace = rawText.lastIndexOf('}');
+    if (firstBrace === -1 || lastBrace === -1 || firstBrace >= lastBrace) return null;
+    return rawText.slice(firstBrace, lastBrace + 1);
+}
+
+function runCommandWithTimeout(command, args = [], options = {}) {
+    const timeoutMs = options.timeoutMs || 25000;
+    return new Promise((resolve, reject) => {
+        const child = spawn(command, args, { shell: false });
+        let stdout = '';
+        let stderr = '';
+        let timedOut = false;
+
+        const timer = setTimeout(() => {
+            timedOut = true;
+            child.kill('SIGKILL');
+        }, timeoutMs);
+
+        child.stdout.on('data', (chunk) => {
+            stdout += chunk.toString();
+        });
+
+        child.stderr.on('data', (chunk) => {
+            stderr += chunk.toString();
+        });
+
+        child.on('error', (error) => {
+            clearTimeout(timer);
+            if (error && error.code === 'ENOENT') {
+                return reject(new Error(`未找到 ${command} 命令，请先在运行环境安装该工具`));
+            }
+            reject(error);
+        });
+
+        child.on('close', (code) => {
+            clearTimeout(timer);
+            if (timedOut) {
+                return reject(new Error(`${command} 执行超时`));
+            }
+            if (code !== 0) {
+                const errOutput = stderr || stdout || `exit code ${code}`;
+                return reject(new Error(errOutput.trim()));
+            }
+            resolve({ stdout, stderr });
+        });
+    });
+}
+
 // Helper function: Check if debug mode is enabled
 function isDebugMode(req) {
     return (req.body && (req.body.debug == 1 || req.body.debug === true))
@@ -78,6 +156,101 @@ async function processDouyinVideo(url, debugMode = false) {
         // Video share: only get video links, no cover images
         videoUrls = douyinUrls || [];
         imgUrls = [];
+    }
+
+    class DouyinExtractorProvider {
+        constructor(scraperInstance) {
+            this.scraper = scraperInstance;
+        }
+
+        canHandle(url) {
+            return typeof url === 'string' && (url.includes('douyin.com') || url.includes('dy.toutiao.com'));
+        }
+
+        async extract({ url, debugMode }) {
+            return processDouyinVideo(url, debugMode);
+        }
+    }
+
+    class YouGetExtractorProvider {
+        canHandle(url) {
+            return isValidHttpUrl(url);
+        }
+
+        parseYouGetOutput(stdout, stderr) {
+            const raw = (stdout || '').trim();
+            const rawWithStderr = `${raw}\n${(stderr || '').trim()}`.trim();
+            const jsonText = extractFirstJsonObject(raw) || extractFirstJsonObject(rawWithStderr);
+            if (!jsonText) {
+                throw new Error('you-get 输出格式无法解析');
+            }
+            return JSON.parse(jsonText);
+        }
+
+        getNormalizedResult(youGetData, debugMode = false) {
+            const streams = youGetData && youGetData.streams ? youGetData.streams : {};
+            const streamCandidates = Object.entries(streams)
+                .map(([streamId, streamInfo]) => {
+                    const srcList = Array.isArray(streamInfo?.src)
+                        ? streamInfo.src.filter(item => typeof item === 'string' && isValidHttpUrl(item))
+                        : [];
+
+                    return {
+                        streamId,
+                        streamInfo,
+                        size: Number(streamInfo?.size) || 0,
+                        srcList
+                    };
+                })
+                .filter(item => item.srcList.length > 0)
+                .sort((a, b) => b.size - a.size);
+
+            if (streamCandidates.length === 0) {
+                throw new Error('you-get 未返回可用的视频直链');
+            }
+
+            const best = streamCandidates[0];
+            const allUrls = streamCandidates.flatMap(item => item.srcList);
+            const uniqueUrls = [...new Set(allUrls)];
+
+            return {
+                code: 0,
+                data: {
+                    video: debugMode ? uniqueUrls : [best.srcList[0]],
+                    img: [],
+                    debugMode,
+                    isImagesShare: false,
+                    method: 'you-get',
+                    title: youGetData?.title || '',
+                    author: youGetData?.artist || youGetData?.extractor || '',
+                    platform: youGetData?.extractor || 'you-get'
+                }
+            };
+        }
+
+        async extract({ url, debugMode }) {
+            const { stdout, stderr } = await runCommandWithTimeout('you-get', ['--json', url], { timeoutMs: 25000 });
+            const youGetData = this.parseYouGetOutput(stdout, stderr);
+            return this.getNormalizedResult(youGetData, debugMode);
+        }
+    }
+
+    class ExtractorService {
+        constructor(providers = []) {
+            this.providers = providers;
+        }
+
+        getProvider(url) {
+            return this.providers.find(provider => provider.canHandle(url));
+        }
+
+        async extract(params) {
+            const provider = this.getProvider(params.url);
+            if (!provider) {
+                throw new Error('当前链接暂不支持，请尝试其他平台链接');
+            }
+            return provider.extract(params);
+        }
     }
     
     // Filter to most stable URL in non-debug mode
@@ -280,6 +453,10 @@ app.use(express.static(path.join(__dirname, '../public')))
 app.use(express.json()); // 用于解析 JSON 格式的请求体
 app.use(express.urlencoded({ extended: true }));
 const scraper = new Scraper()
+const extractorService = new ExtractorService([
+    new DouyinExtractorProvider(scraper),
+    new YouGetExtractorProvider()
+]);
 let PORT = process.env.PORT || 3000;
 
 // readme docs - with caching
@@ -303,6 +480,50 @@ app.get('/readme', async (req, res) => {
         res.status(500).send('Error loading documentation');
     }
 })
+
+app.post('/extract', async (req, res) => {
+    perfMonitor.start('extract-api');
+    const url = req.body.url;
+    const mode = req.body.mode === 'audio' ? 'audio' : 'video';
+
+    if (!url || typeof url !== 'string' || !isValidHttpUrl(url)) {
+        perfMonitor.end('extract-api');
+        return res.send({ code: 1, msg: 'URL参数无效，请提供完整的 http/https 链接', data: null });
+    }
+
+    const cacheKey = `extract:${mode}:${url}`;
+    const cachedResult = videoDataCache.get(cacheKey);
+    if (cachedResult) {
+        perfMonitor.end('extract-api');
+        return res.send(cachedResult);
+    }
+
+    try {
+        const result = await requestDeduplicator.execute(cacheKey, async () => {
+            const extracted = await extractorService.extract({
+                url,
+                mode,
+                debugMode: isDebugMode(req)
+            });
+            return {
+                ...extracted,
+                data: {
+                    ...(extracted.data || {}),
+                    requestedMode: mode
+                }
+            };
+        });
+
+        videoDataCache.set(cacheKey, result);
+        perfMonitor.end('extract-api');
+        return res.send(result);
+    } catch (error) {
+        const message = normalizeMessage(error);
+        console.error('❌ extract API error:', message);
+        perfMonitor.end('extract-api');
+        return res.send({ code: 1, msg: message, data: null });
+    }
+});
 
 // zjcdn直链API - 优先使用zjcdn域名的直接链接
 app.post('/zjcdn', async (req, res) => {
@@ -448,21 +669,29 @@ app.post('/check-url', async (req, res) => {
             return res.json({ valid: false, error: 'URL不能为空' });
         }
         
-        if (!url.includes('douyin.com') && !url.includes('dy.toutiao.com')) {
-            return res.json({ valid: false, error: '请提供抖音链接' });
-        }
-        
         if (!url.startsWith('http://') && !url.startsWith('https://')) {
             return res.json({ valid: false, error: '链接格式不正确，应以http://或https://开头' });
         }
-        
-        // 快速解析测试（不获取完整数据）
-        const douyinId = await scraper.getDouyinVideoId(url);
-        
-        res.json({ 
-            valid: true, 
-            videoId: douyinId,
-            message: 'URL格式正确，可以进行解析'
+
+        // Douyin 走快速解析验证；其他平台走 you-get provider 能力验证
+        if (url.includes('douyin.com') || url.includes('dy.toutiao.com')) {
+            const douyinId = await scraper.getDouyinVideoId(url);
+            return res.json({
+                valid: true,
+                videoId: douyinId,
+                provider: 'douyin',
+                message: 'URL格式正确，可以进行解析'
+            });
+        }
+
+        if (!isValidHttpUrl(url)) {
+            return res.json({ valid: false, error: 'URL格式不正确' });
+        }
+
+        res.json({
+            valid: true,
+            provider: 'you-get',
+            message: 'URL格式正确，将使用 you-get 解析'
         });
         
     } catch (e) {
@@ -476,7 +705,7 @@ app.post('/check-url', async (req, res) => {
         res.json({ 
             valid: false, 
             error: errorMessage,
-            suggestion: '请从抖音APP获取最新的分享链接'
+            suggestion: '请使用最新的分享链接并确保包含完整的 http/https 地址'
         });
     }
 });
@@ -570,6 +799,7 @@ const getReadmeContent = async () => {
 // 服务器端代理下载 - 用户点击下载按钮直接下载，不跳转链接
 app.get('/proxy-download', async (req, res) => {
     const { url, filename } = req.query;
+    const audioOnly = req.query.audioOnly === '1' || req.query.audioOnly === 'true';
     
     if (!url) {
         return res.status(400).json({ error: '缺少URL参数' });
@@ -580,15 +810,17 @@ app.get('/proxy-download', async (req, res) => {
         const fetch = require('node-fetch');
         
         // 直接获取文件内容
+        const requestHeaders = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0',
+            'Referer': getSafeReferer(url),
+            'Accept': '*/*',
+            'Accept-Encoding': 'identity',
+            'Connection': 'keep-alive'
+        };
+
         const response = await fetch(url, {
             method: 'GET',
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0',
-                'Referer': 'https://www.douyin.com/',
-                'Accept': '*/*',
-                'Accept-Encoding': 'identity',
-                'Connection': 'keep-alive'
-            },
+            headers: requestHeaders,
             timeout: 60000
         });
         
@@ -597,12 +829,39 @@ app.get('/proxy-download', async (req, res) => {
             return res.status(response.status).json({ error: `文件获取失败: ${response.status} ${response.statusText}` });
         }
         
-        // 获取文件信息
         const contentType = response.headers.get('content-type') || 'application/octet-stream';
         const contentLength = response.headers.get('content-length');
-        
+
+        if (audioOnly) {
+            const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'dydl-audio-'));
+            const inputPath = path.join(tempDir, 'input-video.mp4');
+            const outputPath = path.join(tempDir, 'output-audio.mp3');
+
+            try {
+                await pipelineAsync(response.body, fs.createWriteStream(inputPath));
+                await runCommandWithTimeout(
+                    'ffmpeg',
+                    ['-y', '-i', inputPath, '-vn', '-acodec', 'libmp3lame', '-q:a', '2', outputPath],
+                    { timeoutMs: 120000 }
+                );
+
+                const audioFilenameBase = (filename || 'media_audio').replace(/\.[a-zA-Z0-9]+$/, '');
+                const finalAudioFilename = `${audioFilenameBase}.mp3`;
+
+                res.setHeader('Content-Type', 'audio/mpeg');
+                res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(finalAudioFilename)}"`);
+                res.setHeader('Cache-Control', 'no-cache');
+                res.setHeader('Pragma', 'no-cache');
+
+                await pipelineAsync(fs.createReadStream(outputPath), res);
+                return;
+            } finally {
+                fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+            }
+        }
+
         // 处理文件名，确保有正确的扩展名
-        let finalFilename = filename || 'douyin_video';
+        let finalFilename = filename || 'media';
         
         // 根据内容类型确定扩展名
         if (!finalFilename.includes('.')) {
@@ -672,7 +931,7 @@ app.get('/proxy-video', async (req, res) => {
         // 构建请求头，支持 Range 请求（拖拽进度条）
         const headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0',
-            'Referer': 'https://www.douyin.com/',
+            'Referer': getSafeReferer(url),
             'Accept': '*/*',
             'Accept-Encoding': 'identity',
             'Connection': 'keep-alive'

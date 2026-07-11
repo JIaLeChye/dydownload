@@ -25,24 +25,31 @@
     <div class="container mt-3">
       <div class="row justify-content-center">
         <div class="col-12 col-md-8 col-lg-6">
-          <h1 class="mb-3 fs-1 text-center fst-italic">抖音工具</h1>
+          <h1 class="mb-3 fs-1 text-center fst-italic">多平台视频工具</h1>
           <form id="downloadForm" class="d-flex flex-column">
             <div class="form-group mb-3">
               <textarea
                 class="form-control"
                 id="videoUrl"
                 style="resize: none; transition: height 0.2s ease;"
-                placeholder="粘贴抖音分享地址（只能粘贴一条）
+                placeholder="粘贴视频分享地址（支持抖音和 you-get 支持的平台，只能粘贴一条）
 
 提示：如果出现&quot;链接已过期&quot;，请：
-1. 使用新的抖音分享链接
+1. 使用新的分享链接
 2. 确保链接完整（包含 https://）
-3. 尝试从抖音APP重新分享"
+3. 尝试从源平台重新分享"
                 autocomplete="off"
                 autocorrect="off"
                 autocapitalize="off"
                 spellcheck="false"
               ></textarea>
+            </div>
+            <div class="form-group mb-3">
+              <label for="downloadMode" class="form-label">输出模式</label>
+              <select id="downloadMode" class="form-select">
+                <option value="video">视频下载</option>
+                <option value="audio">音频提取（MP3）</option>
+              </select>
             </div>
             <button type="submit" id="submit" class="btn btn-primary btn-lg">
               <span
