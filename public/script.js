@@ -37,6 +37,19 @@ function throttle(func, limit = PERF_CONSTANTS.THROTTLE_DELAY) {
       inThrottle = true;
       setTimeout(() => inThrottle = false, limit);
     }
+
+    function isDouyinUrl(url) {
+      try {
+        const parsed = new URL(url);
+        const host = parsed.hostname.toLowerCase();
+        return host === 'douyin.com' ||
+          host.endsWith('.douyin.com') ||
+          host === 'dy.toutiao.com' ||
+          host.endsWith('.dy.toutiao.com');
+      } catch (error) {
+        return false;
+      }
+    }
   };
 }
 
@@ -161,8 +174,8 @@ document.addEventListener("DOMContentLoaded", function () {
             showToast('⚠️ 链接可能已过期，请使用新的抖音分享链接', 'warning');
           }
 
-          const isDouyinUrl = videoUrl.includes('douyin.com') || videoUrl.includes('dy.toutiao.com');
-          if (!isDouyinUrl) {
+          const douyinLink = isDouyinUrl(videoUrl);
+          if (!douyinLink) {
             if (loadingDom) loadingDom.hidden = true;
             if (submitText) submitText.textContent = "解析";
             showToast(`❌ 解析失败: ${error.message || '未知错误'}`, 'error');

@@ -19,7 +19,7 @@ class PerformanceMonitor {
         this.metrics = new Map();
         this.enabled = process.env.ENABLE_PERF_MONITORING === '1';
     }
-    
+
     start(label) {
         if (!this.enabled) return;
         this.metrics.set(label, {
@@ -53,10 +53,51 @@ class PerformanceMonitor {
 
 const perfMonitor = new PerformanceMonitor();
 
+class SimpleRateLimiter {
+    constructor(limit = 8, windowMs = 60000) {
+        this.limit = limit;
+        this.windowMs = windowMs;
+        this.requests = new Map();
+    }
+
+    middleware() {
+        return (req, res, next) => {
+            const key = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+            const now = Date.now();
+            const bucket = this.requests.get(key) || [];
+            const recent = bucket.filter(ts => now - ts < this.windowMs);
+
+            if (recent.length >= this.limit) {
+                return res.status(429).json({
+                    success: false,
+                    message: '请求过于频繁，请稍后再试'
+                });
+            }
+
+            recent.push(now);
+            this.requests.set(key, recent);
+            next();
+        };
+    }
+}
+
 function isValidHttpUrl(url) {
     try {
         const parsed = new URL(url);
         return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch (error) {
+        return false;
+    }
+}
+
+function isDouyinUrl(url) {
+    if (!isValidHttpUrl(url)) return false;
+    try {
+        const hostname = new URL(url).hostname.toLowerCase();
+        return hostname === 'douyin.com'
+            || hostname.endsWith('.douyin.com')
+            || hostname === 'dy.toutiao.com'
+            || hostname.endsWith('.dy.toutiao.com');
     } catch (error) {
         return false;
     }
@@ -158,101 +199,6 @@ async function processDouyinVideo(url, debugMode = false) {
         imgUrls = [];
     }
 
-    class DouyinExtractorProvider {
-        constructor(scraperInstance) {
-            this.scraper = scraperInstance;
-        }
-
-        canHandle(url) {
-            return typeof url === 'string' && (url.includes('douyin.com') || url.includes('dy.toutiao.com'));
-        }
-
-        async extract({ url, debugMode }) {
-            return processDouyinVideo(url, debugMode);
-        }
-    }
-
-    class YouGetExtractorProvider {
-        canHandle(url) {
-            return isValidHttpUrl(url);
-        }
-
-        parseYouGetOutput(stdout, stderr) {
-            const raw = (stdout || '').trim();
-            const rawWithStderr = `${raw}\n${(stderr || '').trim()}`.trim();
-            const jsonText = extractFirstJsonObject(raw) || extractFirstJsonObject(rawWithStderr);
-            if (!jsonText) {
-                throw new Error('you-get 输出格式无法解析');
-            }
-            return JSON.parse(jsonText);
-        }
-
-        getNormalizedResult(youGetData, debugMode = false) {
-            const streams = youGetData && youGetData.streams ? youGetData.streams : {};
-            const streamCandidates = Object.entries(streams)
-                .map(([streamId, streamInfo]) => {
-                    const srcList = Array.isArray(streamInfo?.src)
-                        ? streamInfo.src.filter(item => typeof item === 'string' && isValidHttpUrl(item))
-                        : [];
-
-                    return {
-                        streamId,
-                        streamInfo,
-                        size: Number(streamInfo?.size) || 0,
-                        srcList
-                    };
-                })
-                .filter(item => item.srcList.length > 0)
-                .sort((a, b) => b.size - a.size);
-
-            if (streamCandidates.length === 0) {
-                throw new Error('you-get 未返回可用的视频直链');
-            }
-
-            const best = streamCandidates[0];
-            const allUrls = streamCandidates.flatMap(item => item.srcList);
-            const uniqueUrls = [...new Set(allUrls)];
-
-            return {
-                code: 0,
-                data: {
-                    video: debugMode ? uniqueUrls : [best.srcList[0]],
-                    img: [],
-                    debugMode,
-                    isImagesShare: false,
-                    method: 'you-get',
-                    title: youGetData?.title || '',
-                    author: youGetData?.artist || youGetData?.extractor || '',
-                    platform: youGetData?.extractor || 'you-get'
-                }
-            };
-        }
-
-        async extract({ url, debugMode }) {
-            const { stdout, stderr } = await runCommandWithTimeout('you-get', ['--json', url], { timeoutMs: 25000 });
-            const youGetData = this.parseYouGetOutput(stdout, stderr);
-            return this.getNormalizedResult(youGetData, debugMode);
-        }
-    }
-
-    class ExtractorService {
-        constructor(providers = []) {
-            this.providers = providers;
-        }
-
-        getProvider(url) {
-            return this.providers.find(provider => provider.canHandle(url));
-        }
-
-        async extract(params) {
-            const provider = this.getProvider(params.url);
-            if (!provider) {
-                throw new Error('当前链接暂不支持，请尝试其他平台链接');
-            }
-            return provider.extract(params);
-        }
-    }
-    
     // Filter to most stable URL in non-debug mode
     if (!debugMode && Array.isArray(videoUrls) && videoUrls.length > 1) {
         // Keep only the most stable aweme.snssdk.com interface or first one
@@ -272,6 +218,101 @@ async function processDouyinVideo(url, debugMode = false) {
             isImagesShare 
         } 
     };
+}
+
+class DouyinExtractorProvider {
+    constructor(scraperInstance) {
+        this.scraper = scraperInstance;
+    }
+
+    canHandle(url) {
+        return isDouyinUrl(url);
+    }
+
+    async extract({ url, debugMode }) {
+        return processDouyinVideo(url, debugMode);
+    }
+}
+
+class YouGetExtractorProvider {
+    canHandle(url) {
+        return isValidHttpUrl(url);
+    }
+
+    parseYouGetOutput(stdout, stderr) {
+        const raw = (stdout || '').trim();
+        const rawWithStderr = `${raw}\n${(stderr || '').trim()}`.trim();
+        const jsonText = extractFirstJsonObject(raw) || extractFirstJsonObject(rawWithStderr);
+        if (!jsonText) {
+            throw new Error('you-get 输出格式无法解析');
+        }
+        return JSON.parse(jsonText);
+    }
+
+    getNormalizedResult(youGetData, debugMode = false) {
+        const streams = youGetData && youGetData.streams ? youGetData.streams : {};
+        const streamCandidates = Object.entries(streams)
+            .map(([streamId, streamInfo]) => {
+                const srcList = Array.isArray(streamInfo?.src)
+                    ? streamInfo.src.filter(item => typeof item === 'string' && isValidHttpUrl(item))
+                    : [];
+
+                return {
+                    streamId,
+                    streamInfo,
+                    size: Number(streamInfo?.size) || 0,
+                    srcList
+                };
+            })
+            .filter(item => item.srcList.length > 0)
+            .sort((a, b) => b.size - a.size);
+
+        if (streamCandidates.length === 0) {
+            throw new Error('you-get 未返回可用的视频直链');
+        }
+
+        const best = streamCandidates[0];
+        const allUrls = streamCandidates.flatMap(item => item.srcList);
+        const uniqueUrls = [...new Set(allUrls)];
+
+        return {
+            code: 0,
+            data: {
+                video: debugMode ? uniqueUrls : [best.srcList[0]],
+                img: [],
+                debugMode,
+                isImagesShare: false,
+                method: 'you-get',
+                title: youGetData?.title || '',
+                author: youGetData?.artist || youGetData?.extractor || '',
+                platform: youGetData?.extractor || 'you-get'
+            }
+        };
+    }
+
+    async extract({ url, debugMode }) {
+        const { stdout, stderr } = await runCommandWithTimeout('you-get', ['--json', url], { timeoutMs: 25000 });
+        const youGetData = this.parseYouGetOutput(stdout, stderr);
+        return this.getNormalizedResult(youGetData, debugMode);
+    }
+}
+
+class ExtractorService {
+    constructor(providers = []) {
+        this.providers = providers;
+    }
+
+    getProvider(url) {
+        return this.providers.find(provider => provider.canHandle(url));
+    }
+
+    async extract(params) {
+        const provider = this.getProvider(params.url);
+        if (!provider) {
+            throw new Error('当前链接暂不支持，请尝试其他平台链接');
+        }
+        return provider.extract(params);
+    }
 }
 
 // Simple in-memory cache for API responses
@@ -369,6 +410,7 @@ const videoDataCache = new SimpleCache(120000); // 2 minutes for video data
 videoDataCache.startCleanup();
 
 const requestDeduplicator = new RequestDeduplicator();
+const cookieUpdateRateLimiter = new SimpleRateLimiter(8, 60000);
 
 /**
  * 从 Cookie 字符串中提取并检测 sid_guard
@@ -536,7 +578,7 @@ app.post('/zjcdn', async (req, res) => {
         return res.send({ code: 1, msg: 'URL参数无效', data: null });
     }
     
-    if (!url.includes('douyin.com') && !url.includes('dy.toutiao.com')) {
+    if (!isDouyinUrl(url)) {
         perfMonitor.end('zjcdn-api');
         return res.send({ code: 1, msg: '请提供有效的抖音链接', data: null });
     }
@@ -674,7 +716,7 @@ app.post('/check-url', async (req, res) => {
         }
 
         // Douyin 走快速解析验证；其他平台走 you-get provider 能力验证
-        if (url.includes('douyin.com') || url.includes('dy.toutiao.com')) {
+        if (isDouyinUrl(url)) {
             const douyinId = await scraper.getDouyinVideoId(url);
             return res.json({
                 valid: true,
@@ -1023,7 +1065,7 @@ try {
   vercelEnv = null;
 }
 
-app.post('/api/update-cookie', async (req, res) => {
+app.post('/api/update-cookie', cookieUpdateRateLimiter.middleware(), async (req, res) => {
     try {
         const { cookie, updateVercel = false } = req.body;
         
