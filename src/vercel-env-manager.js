@@ -4,22 +4,23 @@ class VercelEnvManager {
     constructor() {
         this.apiBase = 'https://api.vercel.com';
         this.timeout = 10000;
+        this._resolvedScope = null; // { mode: 'teamId' | 'slug' | 'none', value: string }
     }
 
     get vercelToken() {
-        return (process.env.VERCEL_TOKEN || '').trim();
+        return (process.env.VERCEL_TOKEN || '').trim().replace(/^['"]|['"]$/g, '');
     }
 
     get projectId() {
-        return (process.env.VERCEL_PROJECT_ID || '').trim();
+        return (process.env.VERCEL_PROJECT_ID || '').trim().replace(/^['"]|['"]$/g, '');
     }
 
     get teamId() {
-        return (process.env.VERCEL_TEAM_ID || '').trim();
+        return (process.env.VERCEL_TEAM_ID || '').trim().replace(/^['"]|['"]$/g, '');
     }
 
     get deployHookUrl() {
-        return (process.env.VERCEL_DEPLOY_HOOK_URL || '').trim();
+        return (process.env.VERCEL_DEPLOY_HOOK_URL || '').trim().replace(/^['"]|['"]$/g, '');
     }
 
     /**
@@ -46,19 +47,39 @@ class VercelEnvManager {
     }
 
     /**
-     * 构造带 teamId 及附加参数的 Vercel API URL
+     * 根据已解析或配置的 team 信息构造带查询参数的 Vercel API URL
      */
-    _buildUrl(pathname, extraParams = {}) {
+    _buildUrl(pathname, extraParams = {}, scopeOverride = undefined) {
         const url = new URL(pathname, this.apiBase);
-        if (this.teamId) {
-            url.searchParams.set('teamId', this.teamId);
+        const scope = scopeOverride !== undefined ? scopeOverride : this._getDefaultScope();
+
+        if (scope && scope.mode === 'teamId' && scope.value) {
+            url.searchParams.set('teamId', scope.value);
+        } else if (scope && scope.mode === 'slug' && scope.value) {
+            url.searchParams.set('slug', scope.value);
         }
+
         for (const [k, v] of Object.entries(extraParams)) {
             if (v !== undefined && v !== null && v !== '') {
                 url.searchParams.set(k, String(v));
             }
         }
         return url.toString();
+    }
+
+    _getDefaultScope() {
+        if (this._resolvedScope) {
+            return this._resolvedScope;
+        }
+        const rawTeam = this.teamId;
+        if (!rawTeam) {
+            return { mode: 'none', value: '' };
+        }
+        // Vercel 团队 ID 形如 team_xxx；若用户填的是团队 slug（如 xxx-projects），需用 slug 参数
+        if (rawTeam.startsWith('team_')) {
+            return { mode: 'teamId', value: rawTeam };
+        }
+        return { mode: 'slug', value: rawTeam };
     }
 
     /**
@@ -76,22 +97,106 @@ class VercelEnvManager {
     }
 
     /**
-     * 获取项目的所有环境变量
+     * 获取当前 Token 可访问的团队列表（用于 403 时自动探测正确 teamId）
      */
-    async getEnvironmentVariables() {
+    async _fetchAccessibleTeams() {
         try {
-            this.validateConfig();
-            const url = this._buildUrl(`/v9/projects/${encodeURIComponent(this.projectId)}/env`);
+            const url = this._buildUrl('/v2/teams', {}, { mode: 'none', value: '' });
             const response = await axios.get(url, {
                 headers: this.getHeaders(),
                 timeout: this.timeout
             });
-            return response.data?.envs || [];
+            return Array.isArray(response.data?.teams) ? response.data.teams : [];
         } catch (error) {
-            const formatted = this._formatApiError(error, '获取Vercel环境变量失败');
-            console.error(formatted.message);
-            throw formatted;
+            console.warn('探测 Vercel 团队列表失败:', error?.response?.status || error.message);
+            return [];
         }
+    }
+
+    /**
+     * 获取项目的所有环境变量（遇到 403 自动尝试无 teamId / slug / 自动探测 teamId）
+     */
+    async getEnvironmentVariables() {
+        this.validateConfig();
+
+        const candidateScopes = [];
+        const seen = new Set();
+        const pushScope = (scope) => {
+            const key = `${scope.mode}:${scope.value}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                candidateScopes.push(scope);
+            }
+        };
+
+        // 1. 优先用当前默认/已缓存 scope
+        pushScope(this._getDefaultScope());
+        // 2. 若配置了 teamId，再尝试不带 teamId（兼容 team-scoped Token 自动隐式绑定或个人空间）
+        pushScope({ mode: 'none', value: '' });
+        // 3. 若配置了非 team_ 开头的值，也尝试作为 teamId 兜底
+        if (this.teamId && !this.teamId.startsWith('team_')) {
+            pushScope({ mode: 'teamId', value: this.teamId });
+        }
+
+        const envPath = `/v9/projects/${encodeURIComponent(this.projectId)}/env`;
+        let lastError = null;
+
+        for (const scope of candidateScopes) {
+            try {
+                const url = this._buildUrl(envPath, {}, scope);
+                const response = await axios.get(url, {
+                    headers: this.getHeaders(),
+                    timeout: this.timeout
+                });
+                this._resolvedScope = scope;
+                return response.data?.envs || [];
+            } catch (error) {
+                lastError = error;
+                const status = error?.response?.status;
+                // 仅在 403 / 404 时继续尝试其他 scope；401 等鉴权失败直接退出
+                if (status !== 403 && status !== 404) {
+                    break;
+                }
+            }
+        }
+
+        // 4. 若仍为 403 / 404，自动拉取 Token 所属团队列表逐一探测项目所在 teamId
+        const lastStatus = lastError?.response?.status;
+        if (lastStatus === 403 || lastStatus === 404) {
+            const teams = await this._fetchAccessibleTeams();
+            for (const team of teams) {
+                if (!team?.id) continue;
+                const scope = { mode: 'teamId', value: team.id };
+                if (seen.has(`${scope.mode}:${scope.value}`)) continue;
+                seen.add(`${scope.mode}:${scope.value}`);
+
+                try {
+                    const url = this._buildUrl(envPath, {}, scope);
+                    const response = await axios.get(url, {
+                        headers: this.getHeaders(),
+                        timeout: this.timeout
+                    });
+                    this._resolvedScope = scope;
+                    console.log(`✅ 自动匹配到项目所属 Vercel Team: ${team.id} (${team.slug || ''})`);
+                    return response.data?.envs || [];
+                } catch (err) {
+                    lastError = err;
+                }
+            }
+
+            // 给出更有针对性的排查提示（不暴露任何敏感 Token）
+            const baseErr = this._formatApiError(lastError, '获取Vercel环境变量失败');
+            const hint = teams.length === 0
+                ? '（请检查 VERCEL_TOKEN 是否有效、是否已重新部署生效，且创建 Token 时 Scope 选为 Full Account 或该项目所属 Team）'
+                : `（Token 可访问 ${teams.length} 个团队但均无权访问项目 ${this.projectId}，请核对 VERCEL_PROJECT_ID 与 Token Scope）`;
+            const enhanced = new Error(`${baseErr.message} ${hint}`);
+            console.error(enhanced.message);
+            throw enhanced;
+        }
+
+        const formatted = this._formatApiError(lastError, '获取Vercel环境变量失败');
+        console.error(formatted.message);
+        throw formatted;
     }
 
     /**
