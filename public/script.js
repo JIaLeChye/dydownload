@@ -22,10 +22,20 @@ function sanitizeFilenamePart(text, maxLen = 45) {
     .trim();
 }
 
-function buildDownloadFilename(isImage, index, extension, customTitle = '') {
+function escapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function buildDownloadFilename(isImage, index, extension, customTitle = '', customAuthor = '') {
   const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
-  const titlePart = sanitizeFilenamePart(customTitle || currentMediaMeta.title);
-  const authorPart = sanitizeFilenamePart(currentMediaMeta.author, 20);
+  const itemMeta = currentMediaItems[index];
+  const titlePart = sanitizeFilenamePart(customTitle || itemMeta?.title || currentMediaMeta.title);
+  const authorPart = sanitizeFilenamePart(customAuthor || itemMeta?.author || currentMediaMeta.author, 20);
   const suffix = (currentMediaItems.length > 1 || index > 0) ? `_${index + 1}` : '';
 
   if (titlePart) {
@@ -35,6 +45,31 @@ function buildDownloadFilename(isImage, index, extension, customTitle = '') {
 
   const filePrefix = isImage ? 'douyin_image' : 'douyin_video';
   return `${filePrefix}_${timestamp}_${index + 1}${extension}`;
+}
+
+function extractDouyinLinksFromInput(rawText) {
+  if (!rawText || typeof rawText !== 'string') return [];
+  const trimmed = rawText.trim();
+  if (!trimmed) return [];
+
+  const matches = trimmed.match(/https?:\/\/[a-zA-Z0-9\-._~:/?#[\]@!$&'()*+,;=%]+/g) || [];
+  const douyinUrls = [];
+  const seen = new Set();
+
+  for (const raw of matches) {
+    const cleaned = raw.replace(/[.,!?;:)\]]+$/g, '');
+    if ((cleaned.includes('douyin.com') || cleaned.includes('dy.toutiao.com')) && !seen.has(cleaned)) {
+      seen.add(cleaned);
+      douyinUrls.push(cleaned);
+    }
+  }
+
+  if (douyinUrls.length > 0) {
+    return douyinUrls;
+  }
+
+  // 兼容按行粘贴纯视频 ID 或非标准格式
+  return trimmed.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
 }
 
 function loadParseHistory() {
@@ -123,18 +158,6 @@ function debounce(func, wait = PERF_CONSTANTS.DEBOUNCE_DELAY) {
     };
     clearTimeout(timeout);
     timeout = setTimeout(later, wait);
-  };
-}
-
-// Utility: Throttle function to limit function execution rate
-function throttle(func, limit = PERF_CONSTANTS.THROTTLE_DELAY) {
-  let inThrottle;
-  return function(...args) {
-    if (!inThrottle) {
-      func.apply(this, args);
-      inThrottle = true;
-      setTimeout(() => inThrottle = false, limit);
-    }
   };
 }
 
@@ -261,97 +284,208 @@ document.addEventListener('DOMContentLoaded', function() {
   renderParseHistory();
 });
 
+async function parseSingleUrl(targetUrl) {
+  const requestData = { url: targetUrl };
+  try {
+    const response = await fetch("/zjcdn", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestData),
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const data = await response.json();
+    if (data.code === 0) return data;
+    throw new Error(data.msg || 'zjcdn API返回错误');
+  } catch (error) {
+    console.error("zjcdn API失败，回退到workflow API:", error);
+    const fallbackRes = await fetch("/workflow", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestData),
+    });
+    if (!fallbackRes.ok) {
+      throw new Error(`HTTP error! status: ${fallbackRes.status}`);
+    }
+    const fallbackData = await fallbackRes.json();
+    if (fallbackData.code === 0) return fallbackData;
+    throw new Error(fallbackData.msg || error.message || '解析失败');
+  }
+}
+
 document.addEventListener("DOMContentLoaded", function () {
   document
     .getElementById("submit")
-    .addEventListener("click", function (e) {
+    .addEventListener("click", async function (e) {
       e.preventDefault();
 
-      var videoUrl = document.getElementById("videoUrl").value;
-      if (!videoUrl) {
+      const rawInput = (document.getElementById("videoUrl").value || '').trim();
+      if (!rawInput) {
         alert("请输入视频链接。");
         return;
       }
-      lastParsedInput = videoUrl.trim();
 
-      const requestData = { url: videoUrl };
+      const links = extractDouyinLinksFromInput(rawInput);
+      if (links.length === 0) {
+        alert("未识别到有效的抖音链接。");
+        return;
+      }
+
+      const MAX_BATCH_LINKS = 10;
+      let targetLinks = links;
+      if (links.length > MAX_BATCH_LINKS) {
+        showToast(`⚠️ 单次最多批量解析 ${MAX_BATCH_LINKS} 条链接，已自动截取前 ${MAX_BATCH_LINKS} 条`, 'warning');
+        targetLinks = links.slice(0, MAX_BATCH_LINKS);
+      }
+
       const loadingDom = document.getElementById("loading");
       const submitText = document.getElementById("submit-text");
-      
-      // Show loading state
+      const submitBtn = document.getElementById("submit");
       if (loadingDom) loadingDom.hidden = false;
-      if (submitText) submitText.textContent = "解析中...";
-      
-      // 首先尝试zjcdn API（最稳定）
-      fetch("/zjcdn", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestData),
-      })
-        .then((response) => {
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-          return response.json();
-        })
-        .then((data) => {
+      if (submitBtn) submitBtn.disabled = true;
 
-          if (data.code === 0) {
-            handleApiResponse(data);
-          } else {
-            throw new Error(data.msg || 'zjcdn API返回错误');
+      // 单条链接：走完整单作品模式（展示清晰度切换、音乐下载等）
+      if (targetLinks.length === 1) {
+        lastParsedInput = rawInput;
+        if (submitText) submitText.textContent = "解析中...";
+        try {
+          const data = await parseSingleUrl(rawInput);
+          handleApiResponse(data);
+        } catch (err) {
+          console.error("解析失败:", err);
+          if (loadingDom) loadingDom.hidden = true;
+          if (submitText) submitText.textContent = "解析";
+          let errorMsg = err.message || "解析失败";
+          if (errorMsg.includes('无法从任何用户代理获取videoId') || errorMsg.includes("can't get videoId")) {
+            errorMsg = "抖音链接已过期或无效，请使用新的分享链接";
+          } else if (errorMsg.includes('网络')) {
+            errorMsg = "网络连接失败，请检查网络连接";
           }
-        })
-        .catch((error) => {
-          console.error("zjcdn API失败，回退到workflow API:", error);
-          
-          // 检查是否是URL过期错误
-          let errorMessage = error.message || '';
-          if (errorMessage.includes('无法从任何用户代理获取videoId') || 
-              errorMessage.includes('can\'t get videoId')) {
-            showToast('⚠️ 链接可能已过期，请使用新的抖音分享链接', 'warning');
-          }
-          
-          // 回退到workflow API
-          fetch("/workflow", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(requestData),
-          })
-            .then((response) => {
-              if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-              }
-              return response.json();
-            })
-            .then((data) => {
+          showToast('❌ ' + errorMsg, 'error');
+          resetInterface();
+        } finally {
+          if (submitBtn) submitBtn.disabled = false;
+        }
+        return;
+      }
 
-              handleApiResponse(data);
-            })
-            .catch((fallbackError) => {
-              console.error("所有API都失败了!", fallbackError);
-              if (loadingDom) loadingDom.hidden = true;
-              if (submitText) submitText.textContent = "解析";
-              
-              // 显示更详细的错误信息
-              let errorMsg = "解析失败";
-              if (fallbackError.message.includes('无法从任何用户代理获取videoId') || 
-                  fallbackError.message.includes('can\'t get videoId')) {
-                errorMsg = "抖音链接已过期或无效，请使用新的分享链接";
-              } else if (fallbackError.message.includes('网络')) {
-                errorMsg = "网络连接失败，请检查网络连接";
-              }
-              
-              showToast('❌ ' + errorMsg, 'error');
-              resetInterface();
-            });
-        });
+      // 多条链接：批量并发解析模式（并发数 3）
+      if (submitText) submitText.textContent = `批量解析 0/${targetLinks.length}...`;
+      const results = new Array(targetLinks.length);
+      let completedCount = 0;
+      let nextIdx = 0;
+      const CONCURRENCY = 3;
+
+      const worker = async () => {
+        while (nextIdx < targetLinks.length) {
+          const cur = nextIdx++;
+          try {
+            const data = await parseSingleUrl(targetLinks[cur]);
+            results[cur] = { ok: true, url: targetLinks[cur], data: data.data };
+          } catch (err) {
+            results[cur] = { ok: false, url: targetLinks[cur], error: err.message };
+          } finally {
+            completedCount++;
+            if (submitText) submitText.textContent = `批量解析 ${completedCount}/${targetLinks.length}...`;
+          }
+        }
+      };
+
+      try {
+        await Promise.all(Array.from({ length: Math.min(CONCURRENCY, targetLinks.length) }, worker));
+        handleBatchApiResponses(results);
+      } finally {
+        if (loadingDom) loadingDom.hidden = true;
+        if (submitText) submitText.textContent = "解析";
+        if (submitBtn) submitBtn.disabled = false;
+      }
     });
 });
+
+function handleBatchApiResponses(results) {
+  const succeeded = results.filter(r => r && r.ok && r.data);
+  const failedCount = results.length - succeeded.length;
+
+  if (succeeded.length === 0) {
+    showToast('❌ 批量解析全部失败，请检查链接是否有效', 'error');
+    resetInterface();
+    return;
+  }
+
+  const batchItems = [];
+  let itemIndex = 0;
+
+  succeeded.forEach((entry) => {
+    const d = entry.data;
+    const isImagesShare = d.isImagesShare || (Array.isArray(d.img) && d.img.length > 0 && (!d.video || d.video.length === 0));
+    const title = d.title || '';
+    const author = d.author || '';
+    const music = d.music || null;
+    const livePhotos = Array.isArray(d.livePhotos) ? d.livePhotos : [];
+
+    saveParseHistory(entry.url, title, author);
+
+    if (isImagesShare) {
+      (d.img || []).forEach((imgUrl, imgIdx) => {
+        const lp = livePhotos.find(x => x.index === imgIdx);
+        batchItems.push({
+          url: imgUrl,
+          type: 'image',
+          index: itemIndex++,
+          loaded: true,
+          source: 'batch',
+          title,
+          author,
+          music: imgIdx === 0 ? music : null,
+          livePhotoUrl: lp ? lp.url : null
+        });
+      });
+    } else if (Array.isArray(d.video) && d.video.length > 0) {
+      batchItems.push({
+        url: d.video[0],
+        type: 'video',
+        index: itemIndex++,
+        loaded: true,
+        source: 'batch',
+        title,
+        author,
+        music,
+        livePhotoUrl: null
+      });
+    }
+  });
+
+  if (batchItems.length === 0) {
+    showToast('❌ 批量解析未获取到可用媒体链接', 'error');
+    resetInterface();
+    return;
+  }
+
+  currentMediaMeta = {
+    title: `批量解析完成：成功 ${succeeded.length} 条（共 ${batchItems.length} 个媒体）${failedCount > 0 ? `，失败 ${failedCount} 条` : ''}`,
+    author: '',
+    music: null,
+    qualities: [],
+    livePhotos: [],
+    isBatch: true
+  };
+  renderMediaMetaCard();
+
+  mediaUrls = batchItems.map(i => i.url);
+  const previewContainer = document.getElementById("mediaPreview");
+  if (previewContainer) {
+    previewContainer.hidden = false;
+    previewContainer.style.display = '';
+  }
+  displayMediaItems(batchItems);
+  showToast(
+    failedCount > 0
+      ? `✅ 批量解析完成：${succeeded.length} 成功 / ${failedCount} 失败`
+      : `🎉 批量解析完成，共 ${batchItems.length} 个媒体文件！`,
+    failedCount > 0 ? 'warning' : 'success'
+  );
+}
 
 // 处理API响应的函数
 function handleApiResponse(data) {
@@ -495,67 +629,9 @@ function detectLinkType(url) {
   // 基于HTTP响应头的判断（异步，作为备选）
   // 这里我们先返回一个默认值，后面可以通过HEAD请求来确认
   
-  // 如果都无法判断，默认根据索引位置和常见模式
-  // 抖音通常先返回视频链接，后返回图片链接
-  return 'video'; // 默认为视频
+  // 如果都无法判断，默认返回视频
+  return 'video';
 }
-
-// 异步验证链接类型
-async function verifyLinkType(url, index) {
-  try {
-    // 使用HEAD请求获取Content-Type，避免下载整个文件
-    const response = await fetch(url, {
-      method: 'HEAD',
-      mode: 'cors'
-    });
-    
-    if (response.ok) {
-      const contentType = response.headers.get('content-type') || '';
-      let actualType = 'video'; // 默认
-      
-      if (contentType.startsWith('image/')) {
-        actualType = 'image';
-      } else if (contentType.startsWith('video/')) {
-        actualType = 'video';
-      }
-      
-      // 更新标签显示
-      updateLinkTypeBadge(index, actualType);
-    }
-  } catch (error) {
-    // 如果HEAD请求失败，尝试其他方法
-
-    // 可以尝试通过创建Image对象来检测图片
-    if (!url.includes('.mp4') && !url.includes('video')) {
-      const img = new Image();
-      img.onload = () => {
-        updateLinkTypeBadge(index, 'image');
-      };
-      img.onerror = () => {
-        // 如果不是图片，保持为视频
-      };
-      img.src = url;
-    }
-  }
-}
-
-// 更新链接类型标签
-function updateLinkTypeBadge(index, actualType) {
-  const badge = document.getElementById(`badge-${index}`);
-  if (!badge) return;
-  
-  const isVideo = actualType === 'video';
-  const isImage = actualType === 'image';
-  
-  // 更新样式类
-  badge.className = `link-type-badge ${isVideo ? 'link-type-video' : 'link-type-image'}`;
-  
-  // 更新文本内容
-  badge.textContent = `${isVideo ? '🎬 视频' : '📸 图片'} ${index + 1}`;
-
-}
-
-
 
 // 直接下载函数 - 视频文件强制使用代理下载
 function downloadMedia(url, index, isBatchDownload = false) {
@@ -836,14 +912,23 @@ async function copyMediaUrlByIndex(index) {
 }
 
 function downloadLivePhoto(imageIndex) {
-  const lp = (currentMediaMeta.livePhotos || []).find(item => item.index === imageIndex);
-  if (!lp || !lp.url) {
+  const item = currentMediaItems[imageIndex];
+  const lpUrl = item?.livePhotoUrl || (currentMediaMeta.livePhotos || []).find(lp => lp.index === imageIndex)?.url;
+  if (!lpUrl) {
     showToast('未找到实况视频流', 'warning');
     return;
   }
-  const fileName = buildDownloadFilename(false, imageIndex, '.mp4');
+  const fileName = buildDownloadFilename(false, imageIndex, '.mp4', item?.title || '', item?.author || '');
   showToast('🎞️ 正在下载实况视频...', 'info');
-  proxyDownload(lp.url, fileName, false);
+  proxyDownload(lpUrl, fileName, false);
+}
+
+function downloadItemAudioByIndex(index) {
+  const item = currentMediaItems[index];
+  if (!item?.music?.url) return;
+  const audioName = buildDownloadFilename(false, index, '.mp3', item.music.title || item.title || '', item.author || '');
+  showToast('🎵 正在下载背景音频...', 'info');
+  proxyDownload(item.music.url, audioName, false);
 }
 
 function copyTextToClipboard(textToCopy) {
@@ -1056,7 +1141,8 @@ function displayMediaItems(mediaItems) {
   
   const itemsHtml = mediaItems.map((item, index) => {
     let mediaContent;
-    const hasLivePhoto = item.type === 'image' && (currentMediaMeta.livePhotos || []).some(lp => lp.index === index);
+    const hasLivePhoto = item.type === 'image' && (Boolean(item.livePhotoUrl) || (currentMediaMeta.livePhotos || []).some(lp => lp.index === index));
+    const hasItemMusic = Boolean(currentMediaMeta.isBatch && item.music && item.music.url);
     
     if (item.type === 'image') {
       mediaContent = `<img src="${item.url}" alt="图片 ${index + 1}" onclick="handleMediaClick(${index}, '${item.type}')" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
@@ -1083,8 +1169,16 @@ function displayMediaItems(mediaItems) {
       ? `<div class="media-info">📸 图片 • ${item.width} × ${item.height}px</div>`
       : `<div class="media-info">${item.type === 'image' ? '📸 图片' : '🎬 视频'}</div>`;
 
+    const captionHtml = (currentMediaMeta.isBatch && (item.title || item.author))
+      ? `<div class="media-item-caption">${item.author ? `<span class="media-item-author">@${escapeHtml(item.author)}</span> ` : ''}${escapeHtml(item.title || '')}</div>`
+      : '';
+
     const livePhotoBtn = hasLivePhoto
       ? `<button type="button" class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); downloadLivePhoto(${index})" title="下载该图片的动态实况视频">🎞️ 实况视频</button>`
+      : '';
+
+    const itemAudioBtn = hasItemMusic
+      ? `<button type="button" class="btn btn-sm btn-outline-info" onclick="event.stopPropagation(); downloadItemAudioByIndex(${index})" title="下载该作品背景音乐">🎵 音频</button>`
       : '';
     
     return `
@@ -1096,6 +1190,7 @@ function displayMediaItems(mediaItems) {
         <div class="media-content">
           ${mediaContent}
         </div>
+        ${captionHtml}
         ${mediaInfo}
         <div class="media-actions mt-2">
           <button type="button" class="btn btn-sm btn-outline-success" onclick="event.stopPropagation(); downloadMediaByIndex(${index})" title="智能下载（视频自动使用代理）">
@@ -1104,6 +1199,7 @@ function displayMediaItems(mediaItems) {
           <button type="button" class="btn btn-sm btn-outline-secondary" onclick="event.stopPropagation(); copyMediaUrlByIndex(${index})" title="复制无水印媒体直链">
             📋 复制直链
           </button>
+          ${itemAudioBtn}
           ${livePhotoBtn}
         </div>
       </div>
@@ -1156,8 +1252,10 @@ function toggleView(viewMode) {
     buttons[1].classList.add('active');
   }
   
-  if (mediaUrls.length > 0) {
-    // 重新渲染媒体项目
+  if (currentMediaItems.length > 0) {
+    // 直接重新渲染已有媒体项（保留批量模式的 title/author/music 等元信息）
+    displayMediaItems(currentMediaItems);
+  } else if (mediaUrls.length > 0) {
     Promise.all(mediaUrls.map((url, index) => checkMediaType(url, index)))
       .then(mediaItems => {
         displayMediaItems(mediaItems);
@@ -1916,168 +2014,11 @@ async function downloadAllMedia() {
   }
 }
 
-// 保持向后兼容的旧版批量下载函数
-async function downloadAllMediaLegacy() {
-  if (!currentMediaItems || currentMediaItems.length === 0) {
-    showToast('❌ 没有可下载的媒体文件', 'error');
-    return;
-  }
-  
-  const totalItems = currentMediaItems.length;
-  downloadProgress = { total: totalItems, completed: 0, inProgress: true };
-  
-  // 显示底部进度条
-  showDownloadProgress(totalItems);
-  
-  for (let i = 0; i < currentMediaItems.length; i++) {
-    try {
-      downloadMedia(currentMediaItems[i].url, i, true);
-      downloadProgress.completed++;
-      
-      const progressPercent = (downloadProgress.completed / downloadProgress.total) * 100;
-      updateBottomProgress(downloadProgress.completed, downloadProgress.total);
-      
-      await new Promise(resolve => setTimeout(resolve, 800));
-    } catch (error) {
-      console.error(`下载第 ${i + 1} 个文件失败:`, error);
-    }
-  }
-  
-  downloadProgress.inProgress = false;
-  updateBottomProgress(downloadProgress.total, downloadProgress.total, true);
-  setTimeout(() => {
-    hideDownloadProgress();
-  }, 2000);
-}
-
 // 更新圆形进度条
 function updateDownloadProgress(percent) {
   const progressIndicator = document.querySelector('.download-progress-indicator');
   if (progressIndicator) {
     progressIndicator.style.setProperty('--progress', percent);
-  }
-}
-
-// 批量下载图片
-async function downloadImages() {
-  if (!currentMediaItems || currentMediaItems.length === 0) {
-    showToast('❌ 没有可下载的媒体文件', 'error');
-    return;
-  }
-  
-  const imageItems = currentMediaItems.filter(item => item.type === 'image');
-  
-  if (imageItems.length === 0) {
-    showToast('❌ 没有找到图片文件', 'error');
-    return;
-  }
-  
-  if (downloadProgress.inProgress) {
-    showToast('⏳ 下载任务进行中，请等待完成', 'warning');
-    return;
-  }
-  
-  const totalItems = imageItems.length;
-  downloadProgress = { total: totalItems, completed: 0, inProgress: true };
-  
-  showToast(`🖼️ 开始下载 ${totalItems} 张图片...`, 'info');
-  updateBulkDownloadProgress();
-  
-  for (let i = 0; i < imageItems.length; i++) {
-    try {
-      const originalIndex = currentMediaItems.indexOf(imageItems[i]);
-      downloadMedia(imageItems[i].url, originalIndex, true); // 批量下载图片
-      downloadProgress.completed++;
-      updateBulkDownloadProgress();
-      
-      // 每次下载后稍微延迟
-      await new Promise(resolve => setTimeout(resolve, 600));
-    } catch (error) {
-      console.error(`下载第 ${i + 1} 张图片失败:`, error);
-    }
-  }
-  
-  downloadProgress.inProgress = false;
-  showToast(`🎉 图片下载完成！`, 'success');
-  hideBulkDownloadProgress();
-}
-
-// 批量下载视频
-async function downloadVideos() {
-  if (!currentMediaItems || currentMediaItems.length === 0) {
-    showToast('❌ 没有可下载的媒体文件', 'error');
-    return;
-  }
-  
-  const videoItems = currentMediaItems.filter(item => item.type === 'video');
-  
-  if (videoItems.length === 0) {
-    showToast('❌ 没有找到视频文件', 'error');
-    return;
-  }
-  
-  if (downloadProgress.inProgress) {
-    showToast('⏳ 下载任务进行中，请等待完成', 'warning');
-    return;
-  }
-  
-  const totalItems = videoItems.length;
-  downloadProgress = { total: totalItems, completed: 0, inProgress: true };
-  
-  showToast(`🎬 开始下载 ${totalItems} 个视频...`, 'info');
-  updateBulkDownloadProgress();
-  
-  for (let i = 0; i < videoItems.length; i++) {
-    try {
-      const originalIndex = currentMediaItems.indexOf(videoItems[i]);
-      downloadMedia(videoItems[i].url, originalIndex, true); // 批量下载视频
-      downloadProgress.completed++;
-      updateBulkDownloadProgress();
-      
-      // 视频文件更大，延迟稍长
-      await new Promise(resolve => setTimeout(resolve, 1200));
-    } catch (error) {
-      console.error(`下载第 ${i + 1} 个视频失败:`, error);
-    }
-  }
-  
-  downloadProgress.inProgress = false;
-  showToast(`🎉 视频下载完成！`, 'success');
-  hideBulkDownloadProgress();
-}
-
-// 更新批量下载进度
-function updateBulkDownloadProgress() {
-  const bulkActions = document.getElementById('bulkActions');
-  if (!bulkActions || !downloadProgress.inProgress) return;
-  
-  let progressDiv = document.getElementById('downloadProgress');
-  if (!progressDiv) {
-    progressDiv = document.createElement('div');
-    progressDiv.id = 'downloadProgress';
-    progressDiv.className = 'download-progress mt-3';
-    bulkActions.appendChild(progressDiv);
-  }
-  
-  const percentage = Math.round((downloadProgress.completed / downloadProgress.total) * 100);
-  progressDiv.innerHTML = `
-    <div class="progress mb-2" style="height: 8px;">
-      <div class="progress-bar bg-primary progress-bar-striped progress-bar-animated" 
-           style="width: ${percentage}%"></div>
-    </div>
-    <div class="text-center">
-      <small class="text-muted">下载进度: ${downloadProgress.completed}/${downloadProgress.total} (${percentage}%)</small>
-    </div>
-  `;
-}
-
-// 隐藏批量下载进度
-function hideBulkDownloadProgress() {
-  const progressDiv = document.getElementById('downloadProgress');
-  if (progressDiv) {
-    setTimeout(() => {
-      progressDiv.remove();
-    }, 3000); // 3秒后移除进度条
   }
 }
 
@@ -2405,6 +2346,8 @@ class CookieManager {
     this.saveBtn = document.getElementById('cookie-save-btn');
     this.textarea = document.getElementById('cookie-textarea');
     this.uifidInput = document.getElementById('uifid-input');
+    this.adminPasswordGroup = document.getElementById('admin-password-group');
+    this.adminPasswordInput = document.getElementById('admin-password-input');
     this.status = document.getElementById('cookie-status');
     this.vercelCheckbox = document.getElementById('update-vercel-env');
     this.redeployCheckbox = document.getElementById('trigger-vercel-redeploy');
@@ -2509,6 +2452,9 @@ class CookieManager {
       this.modal.classList.remove('show');
       this.hideStatus();
       this.hideVercelStatus();
+      if (this.adminPasswordInput) {
+        this.adminPasswordInput.value = '';
+      }
     }
   }
   
@@ -2528,6 +2474,11 @@ class CookieManager {
     if (!this.vercelStatus || !this.vercelConfig) return;
     
     const { config } = this.vercelConfig;
+
+    // 控制管理密码输入框显示（仅在服务器配置了 ADMIN_PASSWORD 时显示）
+    if (this.adminPasswordGroup) {
+      this.adminPasswordGroup.hidden = !config.requiresAdminPassword;
+    }
     
     // 如果Vercel功能不可用
     if (config.available === false) {
@@ -2598,11 +2549,18 @@ class CookieManager {
   async saveCookie() {
     const cookieValue = this.textarea?.value?.trim() || '';
     const uifidValue = this.uifidInput?.value?.trim() || '';
+    const adminPassword = this.adminPasswordInput?.value?.trim() || '';
     const updateVercel = this.vercelCheckbox?.checked || false;
     const triggerRedeploy = Boolean(updateVercel && this.redeployCheckbox?.checked);
     
     if (!cookieValue && !uifidValue) {
       this.showStatus('请输入 Cookie、sid_guard 或 UIFID 值', 'error');
+      return;
+    }
+
+    if (this.vercelConfig?.config?.requiresAdminPassword && !adminPassword) {
+      this.showStatus('🔒 请先输入管理密码 (ADMIN_PASSWORD)', 'error');
+      if (this.adminPasswordInput) this.adminPasswordInput.focus();
       return;
     }
     
@@ -2639,6 +2597,7 @@ class CookieManager {
         body: JSON.stringify({ 
           cookie: cookieValue,
           uifid: uifidValue,
+          adminPassword,
           updateVercel,
           triggerRedeploy
         })

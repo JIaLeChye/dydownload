@@ -232,31 +232,33 @@ docker compose down
 **配置步骤**（仅在需要自动同步功能时）：
 
 **第1步：获取Vercel Token**
-1. 访问 [Vercel Dashboard](https://vercel.com/account/tokens)
-2. 点击 "Create Token"
-3. 输入Token名称（如：`dydownload-cookie-sync`）
-4. 复制生成的Token（格式：`vercel_xxxxxxxxxx`）
+1. 访问 [Vercel Account Tokens](https://vercel.com/account/tokens)
+2. 点击 "Create" 新建 Token
+3. 输入 Token 名称（如：`dydownload-cookie-sync`），**SCOPE** 选择 **`Full Account`** 或明确选择该项目所在的 Team，**EXPIRATION** 建议选 `No Expiration`
+4. **立刻复制弹出的一次性明文 Token**（创建后 Vercel 后台不会再次展示明文，切勿误填 Token 名称）
 
-**第2步：获取Project ID**
-1. 在Vercel项目页面，点击 "Settings"
-2. 在 "General" 部分找到 "Project ID"
-3. 复制Project ID（格式：`prj_xxxxxxxxxx`）
+**第2步：获取Project ID（与 Team ID）**
+1. 在 Vercel 项目页面，点击 **Settings → General → Project ID**，复制 `prj_xxxxxxxxxx`
+2. 在所属账号/团队页面，点击 **Settings → General → Team ID**，复制 `team_xxxxxxxxxx`（个人 Hobby 账号现在同样属于 Team；若未填也会自动探测，但建议显式配置）
 
 **第3步：添加环境变量**
 
 | 变量名 | 获取方法 | 说明 |
 |--------|----------|------|
-| `VERCEL_TOKEN` | 步骤1获取的Token | ⚠️ 敏感信息，请妥善保管 |
-| `VERCEL_PROJECT_ID` | 步骤2获取的Project ID | 项目标识符 |
-| `VERCEL_TEAM_ID` | 团队Settings > General > Team ID | 仅团队项目需要 |
+| `VERCEL_TOKEN` | 步骤 1 创建并复制的明文 Token | ⚠️ 敏感信息，请妥善保管 |
+| `VERCEL_PROJECT_ID` | 步骤 2 获取的 Project ID (`prj_...`) | 项目标识符 |
+| `VERCEL_TEAM_ID` | 步骤 2 获取的 Team ID (`team_...`) | 推荐配置（留空时也会自动通过 `/v2/teams` 探测） |
+| `VERCEL_DEPLOY_HOOK_URL` | 项目 Settings > Git > Deploy Hooks | 可选，配置后优先用 Deploy Hook 触发重新部署 |
+| `ADMIN_PASSWORD` | 自定义强密码 | **公网强烈推荐**：配置后更新 Cookie / 触发部署需输入管理密码 |
 
-**第4步：重新部署项目**
+**第4步：手动触发一次 Redeploy**
+- 环境变量保存后，在 Vercel **Deployments** 对最新 Production 部署点一次 **Redeploy** 使上述配置生效。
 
 **功能优势**：
-- 🔄 网页界面更新Cookie后自动同步到Vercel环境变量
-- 🚀 无需手动登录Dashboard更新环境变量
-- ⚡ 支持一键Cookie更新+自动部署
-- 🛡️ 安全的API调用，所有操作通过官方API进行
+- 🔄 网页界面更新 Cookie / UIFID 后自动同步到 Vercel 环境变量（同步 `DOUYIN_COOKIE` 及已有 `DOUYIN_UIFID`）
+- 🚀 支持一键触发 Vercel 自动重新部署（约 30-60 秒后在所有 Serverless 实例永久生效）
+- 🧠 线上 Vercel 环境默认自动勾选同步与重新部署，本地开发默认不勾选防误触
+- 🛡️ 真实透传 Vercel API 报错与自动 Team Scope 探测，排查一目了然
 
 #### 💡 Vercel部署重点提醒
 
@@ -281,21 +283,21 @@ docker compose down
 
 ### 基础操作
 
-1. **📎 粘贴链接** - 在输入框粘贴抖音分享链接
-2. **🔍 自动解析** - 点击"解析"按钮，系统自动识别内容
-3. **👀 预览内容** - 在预览区域查看视频/图片
-4. **💾 下载文件** - 系统自动选择合适的下载方式
+1. **📎 粘贴链接** - 粘贴单条或多条抖音分享文案/链接（每行一条最多支持 **10 条批量解析**，支持 **📋 粘贴并解析**、**🧹 清空** 或 `Ctrl + Enter` 快捷解析）
+2. **🔍 自动解析** - 展示作品标题、作者，并自动记录到下方 **🕒 最近解析**（最多 8 条）
+3. **👀 预览与切换** - 支持列表/网格视图、多档视频清晰度切换、**🎵 下载音频 (MP3)**、**📋 复制直链** 与图集 **🎞️ 实况视频** 下载
+4. **💾 智能命名下载** - 自动以 `作者-作品标题` 命名文件并选择最优下载方式
 
 ### 🍪 Cookie / UIFID 管理功能
 
 #### 在网页中更新 `sid_guard` 与 `UIFID`
-1. 点击页面右上角的 🍪 按钮（面板会实时显示当前 `sid_guard` 剩余有效期及 `UIFID` 配置状态）
+1. 点击页面右上角的 🍪 按钮（面板会实时显示当前来源、 `sid_guard` 剩余有效期及 `UIFID` 配置状态）
 2. 按以下任意一种方式填写：
    - **分开填写**：上方填 `sid_guard`（纯值或 `sid_guard=...`），下方 **UIFID** 输入框粘贴 `UIFID` 值（若仅更新 `UIFID`，上方留空即可，系统会自动保留已有 `sid_guard`）
    - **精简合并格式**：直接在上方粘贴 `sid_guard=你的值; UIFID=你的值;`
    - **完整 Cookie**：直接粘贴从浏览器 Network 复制的完整 `Cookie`（系统会自动提取 `UIFID` 并过滤会触发 403 的多余 SecSDK 字段）
-3. 如已配置 Vercel API 凭证，可勾选 **「同时更新Vercel环境变量」**
-4. 点击 **「更新Cookie」** 即可立即生效
+3. 如已配置 Vercel API 凭证，可勾选 **「同时更新 Vercel 环境变量」** 及 **「同步后自动触发 Vercel 重新部署」**（线上 Vercel 环境会默认自动勾选）
+4. 点击 **「更新Cookie」** 完成更新
 
 #### Cookie格式说明
 - ✅ **精简合并格式（推荐）**：`sid_guard=值; UIFID=值;`
@@ -344,12 +346,12 @@ DOUYIN_COOKIE=sid_guard=你的cookie值;
 - 确认变量名为 `DOUYIN_COOKIE`（区分大小写）
 - 重新部署项目使环境变量生效
 
-#### 5. Cookie自动同步失败
-**原因**：Vercel API配置不完整
+#### 5. Cookie自动同步失败 / `HTTP 403: Not authorized`
+**原因**：`VERCEL_TOKEN` 无效/Scope 不匹配、`VERCEL_PROJECT_ID` 不正确，或新增环境变量后未重新部署
 **解决方案**：
-- 检查 `VERCEL_TOKEN` 是否有效
-- 确认 `VERCEL_PROJECT_ID` 是否正确
-- 查看浏览器控制台错误信息
+- 在 [Vercel Account Tokens](https://vercel.com/account/tokens) 新建 Token，**SCOPE** 选 **`Full Account`** 或项目所属 Team，复制一次性明文填入 `VERCEL_TOKEN`（不要填成 Token 名称）
+- 核对 `VERCEL_PROJECT_ID` (`prj_...`) 与 `VERCEL_TEAM_ID` (`team_...`)，确保作用于当前访问的环境（Production / Preview）
+- 修改 Vercel 环境变量后，在 **Deployments** 手动点击一次 **Redeploy** 使其注入运行时环境
 
 #### 6. 为什么不能自动获取Vercel凭证？
 **问题**：能否自动获取Vercel Token和Project ID？
@@ -462,9 +464,21 @@ DOUYIN_COOKIE=sid_guard=你的cookie值;
 - 优化短链跳转解析：优先使用 `redirect: 'manual'` 从 `Location` 头直接提取 `videoId`，大幅降低解析延迟
 - 改进图文作品识别（`isImagesAweme`），兼容 `aweme_type: 68` 及各类图集结构
 
-**🍪 Cookie / UIFID 管理升级**
-- 网页 🍪 弹窗新增独立 **UIFID 输入框**与状态展示，支持同时更新或单独更新 `UIFID`（自动保留已有 `sid_guard` 并同步写入 `.env.local` / Vercel 环境变量）
-- 更新 `README.md` 与 `.env.example`，补充 `sid_guard` 与 `UIFID` 的获取及更新说明
+**🍪 Cookie / UIFID 与 Vercel 一键同步升级**
+- 网页 🍪 弹窗新增独立 **UIFID 输入框**与状态展示，支持同时更新或单独更新 `UIFID`（自动保留已有 `sid_guard`）
+- 重构 `VercelEnvManager` 与 `/api/update-cookie`：新增**同步后自动触发 Vercel 重新部署**（支持 `VERCEL_DEPLOY_HOOK_URL` 或 Vercel Deployments API）、同步更新已有 `DOUYIN_UIFID`、自动探测 Team Scope、真实透传 Vercel 错误提示，并修复 Vercel 环境下来源误显示为 `.env.local` 的问题
+- 线上 Vercel 环境配置齐全时自动默认勾选云端同步与重新部署
+
+**🔒 安全加固与批量解析**
+- 新增代理域名白名单校验（`/proxy-download` 与 `/proxy-video` 仅允许抖音/字节系 CDN 域名，拦截内网 IP、非白名单域名及恶意重定向，防止 SSRF 与流量盗刷）
+- 新增可选管理密码 `ADMIN_PASSWORD`（采用常数时间比对保护 `/api/update-cookie`，未配置时本地免密，配置后 🍪 弹窗自动显示密码框）
+- 支持**多链接批量解析**（每行一条，单次最多 10 条并发解析，保留每条作品独立标题/作者/音频并支持一键批量下载），并清理了前端约 230 行废弃死代码
+
+**🎨 前端体验与 Bug 修复**
+- 新增作品信息卡片（标题、`@作者`、多档视频清晰度切换、🎵 背景音频下载、📋 复制直链、图集 🎞️ 实况视频下载）
+- 下载文件自动使用清理后的 `作者-标题` 命名；新增 **📋 粘贴并解析**、**🧹 清空**、`Ctrl + Enter` 快捷键及本地 **🕒 最近解析历史**
+- 修复失败后预览区永久隐藏、切换视图异常调用、暗色模式下 `.text-muted` 与状态面板对比度异常、移除 `CookieManager` 重复死代码与内联 URL 拼接风险，并升级现代剪贴板 API
+- 更新 `README.md` 与 `.env.example`
 
 ---
 

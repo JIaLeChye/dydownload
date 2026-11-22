@@ -5,11 +5,95 @@ const { maskSensitiveInfo, formatRemainingTime, checkSidGuardExpiry, isImagesAwe
 const express = require('express')
 const path = require('path')
 const fs = require('fs')
+const crypto = require('crypto')
+const net = require('net')
 const { pipeline } = require('stream')
 const { promisify } = require('util')
 const { marked } = require('marked')
 
 const pipelineAsync = promisify(pipeline)
+
+// 代理接口允许的抖音/字节系 CDN 域名白名单（防止 SSRF 与开放代理滥用）
+const ALLOWED_PROXY_HOST_SUFFIXES = [
+    'douyinvod.com',
+    'zjcdn.com',
+    'douyinpic.com',
+    'snssdk.com',
+    'douyin.com',
+    'iesdouyin.com',
+    'byteimg.com',
+    'bytedance.com',
+    'bytecdn.com',
+    'bytetos.com',
+    'bytegoofy.com',
+    'amemv.com',
+    'ixigua.com',
+    'tiktokcdn.com',
+    'douyinstatic.com',
+    'douyincdn.com',
+    'pstatp.com',
+    'toutiao.com',
+];
+
+function isAllowedProxyUrl(rawUrl) {
+    if (!rawUrl || typeof rawUrl !== 'string') return false;
+    let parsed;
+    try {
+        parsed = new URL(rawUrl);
+    } catch (_) {
+        return false;
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    if (parsed.username || parsed.password) return false;
+
+    const host = parsed.hostname.toLowerCase().replace(/\.$/, '');
+    if (!host || host === 'localhost' || net.isIP(host)) return false;
+
+    return ALLOWED_PROXY_HOST_SUFFIXES.some(
+        (suffix) => host === suffix || host.endsWith('.' + suffix)
+    );
+}
+
+async function fetchAllowedMedia(targetUrl, options = {}, maxRedirects = 5) {
+    const fetch = require('node-fetch');
+    let currentUrl = targetUrl;
+
+    for (let hop = 0; hop <= maxRedirects; hop++) {
+        if (!isAllowedProxyUrl(currentUrl)) {
+            const err = new Error('不允许代理非白名单域名');
+            err.statusCode = 403;
+            throw err;
+        }
+        const response = await fetch(currentUrl, {
+            ...options,
+            redirect: 'manual',
+        });
+        if ([301, 302, 303, 307, 308].includes(response.status)) {
+            const location = response.headers.get('location');
+            if (!location) return response;
+            currentUrl = new URL(location, currentUrl).toString();
+            continue;
+        }
+        return response;
+    }
+
+    const err = new Error('代理重定向次数过多');
+    err.statusCode = 502;
+    throw err;
+}
+
+function getAdminPassword() {
+    return (process.env.ADMIN_PASSWORD || '').trim();
+}
+
+function verifyAdminPassword(inputPassword) {
+    const expected = getAdminPassword();
+    if (!expected) return true; // 未配置 ADMIN_PASSWORD 时不强制鉴权
+    if (typeof inputPassword !== 'string' || !inputPassword) return false;
+    const expectedHash = crypto.createHash('sha256').update(expected, 'utf8').digest();
+    const inputHash = crypto.createHash('sha256').update(inputPassword.trim(), 'utf8').digest();
+    return crypto.timingSafeEqual(expectedHash, inputHash);
+}
 
 // Performance monitoring utility
 class PerformanceMonitor {
@@ -599,13 +683,14 @@ app.get('/proxy-download', async (req, res) => {
     if (!url) {
         return res.status(400).json({ error: '缺少URL参数' });
     }
+
+    if (!isAllowedProxyUrl(url)) {
+        return res.status(403).json({ error: '不允许代理该域名' });
+    }
     
     try {
-
-        const fetch = require('node-fetch');
-        
-        // 直接获取文件内容
-        const response = await fetch(url, {
+        // 校验白名单并安全跟随重定向获取文件内容
+        const response = await fetchAllowedMedia(url, {
             method: 'GET',
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0',
@@ -677,7 +762,7 @@ app.get('/proxy-download', async (req, res) => {
         
         console.error('❌ 代理下载错误:', error.message);
         if (!res.headersSent) {
-            res.status(500).json({ error: '下载失败: ' + error.message });
+            res.status(error.statusCode || 500).json({ error: '下载失败: ' + error.message });
         }
     }
 });
@@ -689,11 +774,12 @@ app.get('/proxy-video', async (req, res) => {
     if (!url) {
         return res.status(400).json({ error: '缺少URL参数' });
     }
+
+    if (!isAllowedProxyUrl(url)) {
+        return res.status(403).json({ error: '不允许代理该域名' });
+    }
     
     try {
-
-        const fetch = require('node-fetch');
-        
         // 构建请求头，支持 Range 请求（拖拽进度条）
         const headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0',
@@ -709,8 +795,8 @@ app.get('/proxy-video', async (req, res) => {
             console.log('📡 透传 Range 请求:', req.headers.range);
         }
         
-        // 直接获取文件内容
-        const response = await fetch(url, {
+        // 校验白名单并安全跟随重定向获取文件内容
+        const response = await fetchAllowedMedia(url, {
             method: 'GET',
             headers: headers,
             timeout: 60000
@@ -760,7 +846,7 @@ app.get('/proxy-video', async (req, res) => {
         
         console.error('❌ 视频代理错误:', error.message);
         if (!res.headersSent) {
-            res.status(500).json({ error: '视频加载失败: ' + error.message });
+            res.status(error.statusCode || 500).json({ error: '视频加载失败: ' + error.message });
         }
     }
 });
@@ -791,7 +877,17 @@ try {
 
 app.post('/api/update-cookie', async (req, res) => {
     try {
-        const { cookie = '', uifid = '', updateVercel = false, triggerRedeploy = false } = req.body || {};
+        const { cookie = '', uifid = '', updateVercel = false, triggerRedeploy = false, adminPassword = '' } = req.body || {};
+
+        // 若配置了 ADMIN_PASSWORD，则强制校验管理密码
+        const providedPassword = adminPassword || req.headers['x-admin-password'] || '';
+        if (!verifyAdminPassword(providedPassword)) {
+            return res.status(401).json({
+                success: false,
+                code: 'UNAUTHORIZED',
+                message: '管理密码错误或未填写，无权更新 Cookie'
+            });
+        }
         const rawCookie = typeof cookie === 'string' ? cookie.trim() : '';
         const rawUifid = typeof uifid === 'string' ? uifid.trim().replace(/^UIFID(_TEMP)?=/i, '').replace(/;+$/, '').trim() : '';
         
@@ -1167,6 +1263,7 @@ app.get('/api/cookie-status', (req, res) => {
 
 // Vercel配置状态检查API
 app.get('/api/vercel-config', (req, res) => {
+    const requiresAdminPassword = Boolean(getAdminPassword());
     if (!vercelEnv) {
         return res.json({
             success: true,
@@ -1174,7 +1271,9 @@ app.get('/api/vercel-config', (req, res) => {
                 isConfigured: false, 
                 available: false,
                 hasToken: false,
-                hasProjectId: false 
+                hasProjectId: false,
+                isVercel,
+                requiresAdminPassword
             },
             instructions: {
                 note: 'Vercel自动同步功能为可选功能',
@@ -1188,7 +1287,7 @@ app.get('/api/vercel-config', (req, res) => {
     const configStatus = vercelEnv.getConfigStatus();
     res.json({
         success: true,
-        config: { ...configStatus, available: true },
+        config: { ...configStatus, available: true, requiresAdminPassword },
         instructions: {
             vercelToken: '在Vercel Dashboard > Settings > Tokens中创建',
             projectId: '在项目Settings > General中找到Project ID',
