@@ -11,7 +11,7 @@
         <img alt="基于项目" src="https://img.shields.io/badge/基于-douyin__no__watermark-blue">
     </a>
     <a href="https://github.com/JIaLeChye/dydownload">
-        <img alt="当前版本" src="https://img.shields.io/badge/版本-2026.02-brightgreen">
+        <img alt="当前版本" src="https://img.shields.io/badge/版本-2026.11-brightgreen">
     </a>
   <a href="https://www.docker.com/">
     <img alt="Docker" src="https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white">
@@ -39,12 +39,13 @@
 🔧 **环境变量支持** - 支持本地开发和生产环境配置  
 ☁️ **Vercel一键部署** - 开箱即用的云端部署方案  
 
-### 🎉 最新功能：Cookie智能更新
+### 🎉 最新特性：免 Cookie 主通道 + UIFID/Cookie 智能管理
 
-- ✅ **网页界面更新** - 点击🍪按钮即可更新Cookie  
-- ✅ **格式智能识别** - 自动识别完整Cookie或sid_guard值  
-- ✅ **实时生效** - 当前会话立即使用新Cookie  
-- 🚀 **Vercel自动同步** - 可选功能，自动更新云端环境变量  
+- ✅ **免 Cookie 主通道** - 常规公开视频优先通过移动端 Feed 接口直出，免 Argus 风控、免 Cookie、免签名，Vercel Serverless 开箱即用
+- ✅ **PC Web 备用通道** - 主通道未命中时自动回退至 PC Web Detail API，内置 `a_bogus` + `UIFID` / `x-secsdk-web-signature` 签名穿透风控
+- ✅ **网页界面更新** - 点击 🍪 按钮可一站式更新 `sid_guard` 与 `UIFID`（支持完整 Cookie、精简格式或分开填写）
+- ✅ **实时生效** - 当前会话立即生效，本地/Docker 同步写入 `.env.local`
+- 🚀 **Vercel自动同步** - 可选功能，自动同步更新云端 `DOUYIN_COOKIE` 环境变量  
 
 ## 🎨 界面预览
 
@@ -103,25 +104,25 @@ npm install
 cp .env.example .env.local
 ```
 
-#### 配置抖音Cookie（必需）
+#### 配置抖音 Cookie 与 UIFID（可选，PC Web 备用通道需要）
 
-**方法一：获取完整Cookie**
-1. 浏览器访问 [douyin.com](https://douyin.com)
+> **💡 提示**：普通公开视频现已优先走**移动端 Feed 免风控主通道**，无需 Cookie 即可正常解析。仅当遇到少数主通道未命中的特殊作品、回退至 PC Web 备用接口时，才需要同时提供有效的 `sid_guard` 与 `UIFID`。
+
+**获取 `sid_guard` 与 `UIFID`（推荐方法）：**
+1. 浏览器登录 [www.douyin.com](https://www.douyin.com)
 2. 按 `F12` 打开开发者工具
-3. 切换到 `Network` 标签页，刷新页面
-4. 找到任意请求，复制 `Request Headers` 中的完整 `Cookie` 值
+3. 切换到 **Application（应用）→ Cookies → `https://www.douyin.com`**
+4. 分别复制 **`sid_guard`** 和 **`UIFID`**（若无 `UIFID` 则复制 `UIFID_TEMP`）的值
 
-**方法二：只获取sid_guard值**
-1. 在上述Cookie中找到 `sid_guard=` 部分
-2. 复制等号后的值（如：`a1b2c3d4...xyz`）
+*(或者在 `Network` 标签页刷新页面，复制任意请求 `Request Headers` 中的完整 `Cookie` 值，后端会自动提取 `UIFID` 并过滤干扰字段。)*
 
 编辑 `.env.local` 文件：
 ```bash
-# 完整Cookie格式（推荐）
-DOUYIN_COOKIE=sid_guard=你的完整cookie值; sessionid=另一个值;
+# 推荐：精简格式同时包含 sid_guard 和 UIFID（也适合直接用于 Vercel 环境变量）
+DOUYIN_COOKIE=sid_guard=你的sid_guard值; UIFID=你的UIFID值;
 
-# 或只配置sid_guard值（系统会自动包装）
-DOUYIN_COOKIE=sid_guard=a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6%7C1756624538%7C5184000%7CThu%2C+30-Oct-2025+07%3A15%3A38+GMT;
+# 也可只填完整 Cookie，或单独配置 DOUYIN_UIFID
+# DOUYIN_UIFID=你的UIFID值
 ```
 
 #### 启动服务
@@ -209,12 +210,13 @@ docker compose down
 3. 选择此GitHub仓库
 4. 点击 "Deploy"
 
-**第2步：配置环境变量**
+**第2步：配置环境变量（可选，备用通道推荐配置）**
 在Vercel项目的 `Settings` > `Environment Variables` 中添加：
 
 | 变量名 | 值 | 环境 | 说明 |
 |--------|----|----|------|
-| `DOUYIN_COOKIE` | `sid_guard=你的cookie值;` | Production, Preview | 必需 |
+| `DOUYIN_COOKIE` | `sid_guard=你的值; UIFID=你的值;` | Production, Preview | 可选（普通公开视频免 Cookie；PC Web 备用通道需要） |
+| `DOUYIN_UIFID` | `你的UIFID值` | Production, Preview | 可选（若已在 `DOUYIN_COOKIE` 中包含 `UIFID=...` 则无需重复配置） |
 
 **第3步：重新部署**
 - 点击 `Deployments` > `Redeploy` 使环境变量生效
@@ -284,20 +286,22 @@ docker compose down
 3. **👀 预览内容** - 在预览区域查看视频/图片
 4. **💾 下载文件** - 系统自动选择合适的下载方式
 
-### 🍪 Cookie管理功能
+### 🍪 Cookie / UIFID 管理功能
 
-#### 更新Cookie
-1. 点击页面右上角的 🍪 按钮
-2. 输入新的Cookie值
-   - 仅sid_guard值：`a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6%7C1756624538...`
-3. 可选择是否同步到Vercel环境变量
-4. 点击"更新Cookie"完成
+#### 在网页中更新 `sid_guard` 与 `UIFID`
+1. 点击页面右上角的 🍪 按钮（面板会实时显示当前 `sid_guard` 剩余有效期及 `UIFID` 配置状态）
+2. 按以下任意一种方式填写：
+   - **分开填写**：上方填 `sid_guard`（纯值或 `sid_guard=...`），下方 **UIFID** 输入框粘贴 `UIFID` 值（若仅更新 `UIFID`，上方留空即可，系统会自动保留已有 `sid_guard`）
+   - **精简合并格式**：直接在上方粘贴 `sid_guard=你的值; UIFID=你的值;`
+   - **完整 Cookie**：直接粘贴从浏览器 Network 复制的完整 `Cookie`（系统会自动提取 `UIFID` 并过滤会触发 403 的多余 SecSDK 字段）
+3. 如已配置 Vercel API 凭证，可勾选 **「同时更新Vercel环境变量」**
+4. 点击 **「更新Cookie」** 即可立即生效
 
 #### Cookie格式说明
-- ✅ **简化格式**：`sid_guard=值;`
-- ✅ **纯值格式**：`a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6%7C1756624538...`
-
-系统会自动识别并处理不同格式的Cookie。
+- ✅ **精简合并格式（推荐）**：`sid_guard=值; UIFID=值;`
+- ✅ **完整 Cookie 格式**：包含 `sid_guard=` 与 `UIFID=` 的整串 Cookie
+- ✅ **仅 sid_guard 纯值**：`a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6%7C1756624538...`
+- ✅ **单独更新 UIFID**：在 UIFID 输入框中单独粘贴即可，自动与已有 `sid_guard` 合并
 
 ---
 
@@ -433,24 +437,36 @@ DOUYIN_COOKIE=sid_guard=你的cookie值;
 
 ### 🔄 下载系统相关
 
-### 🔧 403 Forbidden 错误解决
+### 🔧 403 Forbidden / ArgusSecurityPlugin 错误解决
 
-如果遇到 403 错误，通常是以下原因：
+如果遇到 `403 Blocked by ArgusSecurityPlugin Uifid Not Found` 或 `Signature Not Found`，通常发生在移动端 Feed 主通道未命中、回退到 PC Web Detail 接口时：
 
-#### Cookie 过期
-
-**现象**：
-```
-FetchError: invalid json response body at https://www.douyin.com/aweme/v1/web/aweme/detail/...
-```
-或者API返回空响应（status 200但内容为空）
+**原因**：
+- 抖音 PC Web 接口 (`/aweme/v1/web/aweme/detail/`) 新增了 `ArgusSecurityPlugin` 风控校验，仅提供 `sid_guard` 无法通过校验，需要携带真实浏览器的 `UIFID`。
 
 **解决方案**：
-1. 打开抖音网页版：https://www.douyin.com
-2. 按 `F12` 打开开发者工具
+1. 浏览器登录 [https://www.douyin.com](https://www.douyin.com)，按 `F12` 打开开发者工具
+2. 打开 **Application（应用）→ Cookies → `https://www.douyin.com`**
+3. 复制 `sid_guard` 与 `UIFID`（无则取 `UIFID_TEMP`）的值
+4. 点击网页右上角 🍪 图标填入并保存（或更新 Vercel 环境变量 `DOUYIN_COOKIE="sid_guard=...; UIFID=...;"`）
 ---
 
 ## 📅 更新日志
+
+### 🚀 v2026.11.22
+*发布日期: 2026年11月22日*
+
+**🛡️ 解析通道升级（解决 ArgusSecurityPlugin 403 拦截）**
+- 新增**移动端 Feed 核心主通道**（`api5-normal-c-hl.amemv.com` 主节点 + `aweme.snssdk.com` 备用节点），常规公开视频**免 Cookie、免签名、免 Argus 风控**直接解析，完美兼容 Vercel Serverless
+- 增强 PC Web Detail 备用通道：支持 `UIFID` 提取、`x-secsdk-web-signature` 纯算签名、动态 `ttwid`/`msToken`、`a_bogus` URL 编码修复及异常 SecSDK Cookie 自动过滤
+- 优化短链跳转解析：优先使用 `redirect: 'manual'` 从 `Location` 头直接提取 `videoId`，大幅降低解析延迟
+- 改进图文作品识别（`isImagesAweme`），兼容 `aweme_type: 68` 及各类图集结构
+
+**🍪 Cookie / UIFID 管理升级**
+- 网页 🍪 弹窗新增独立 **UIFID 输入框**与状态展示，支持同时更新或单独更新 `UIFID`（自动保留已有 `sid_guard` 并同步写入 `.env.local` / Vercel 环境变量）
+- 更新 `README.md` 与 `.env.example`，补充 `sid_guard` 与 `UIFID` 的获取及更新说明
+
+---
 
 ### 🚀 v2026.3.27
 *发布日期: 2026年3月27日*

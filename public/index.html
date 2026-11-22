@@ -147,33 +147,46 @@
             <span class="status-label">有效性:</span>
             <span class="status-value" id="modal-cookie-validity">-</span>
           </div>
+          <div class="status-row">
+            <span class="status-label">UIFID (备用):</span>
+            <span class="status-value" id="modal-cookie-uifid">-</span>
+          </div>
         </div>
         
         <div class="cookie-modal-body">
           <p class="text-muted mb-3">
-            当出现"Cookie已失效"错误时，需要更新Cookie。您可以输入完整的cookie或只输入sid_guard的值。
+            常规公开视频已支持<strong>免 Cookie 解析</strong>；仅在回退 PC Web 备用通道（部分特殊作品）时需要有效的 <code>sid_guard</code> 与 <code>UIFID</code>。
           </p>
           
           <div class="mb-3">
-            <label for="cookie-textarea" class="form-label">Cookie值:</label>
+            <label for="cookie-textarea" class="form-label">Cookie / sid_guard:</label>
             <textarea
               id="cookie-textarea"
               class="cookie-textarea"
               rows="4"
-              placeholder="可以输入以下任一格式：
+              placeholder="可输入以下任一格式（留空则仅更新下方 UIFID）：
 
-1. 完整cookie：sid_guard=xxxxxx...;
-2. 只输入sid_guard值：xxxxxx%7Cxxxxxxxx%7Cxxxxxxx%7CDate
-
-系统会自动识别并处理"
+1. 精简格式：sid_guard=xxx; UIFID=yyy;
+2. 完整 Cookie：包含 sid_guard= 与 UIFID= 的完整字符串
+3. 仅 sid_guard 值：xxxxxx%7Cxxxxxxxx%7Cxxxxxxx%7CDate"
             ></textarea>
-            <div class="form-text">
+            <div class="mt-2">
+              <label for="uifid-input" class="form-label">UIFID <span class="text-muted">(可选，PC Web 备用通道过风控用)</span>:</label>
+              <input
+                type="text"
+                id="uifid-input"
+                class="form-control"
+                placeholder="可选：直接粘贴 UIFID 值（若上方已含 UIFID=... 则无需重复填）"
+                autocomplete="off"
+                spellcheck="false"
+              />
+            </div>
+            <div class="form-text mt-2">
               <small>
                 <strong>获取方法：</strong><br>
-                1. 打开浏览器访问 douyin.com<br>
-                2. 按F12打开开发者工具<br>
-                3. 在Network标签页刷新页面<br>
-                4. 找到任意请求，复制Request Headers中的Cookie值或sid_guard部分
+                1. 浏览器登录 <a href="https://www.douyin.com" target="_blank" rel="noopener">douyin.com</a>，按 <code>F12</code> 打开开发者工具<br>
+                2. 切换到 <strong>Application (应用) → Cookies → https://www.douyin.com</strong><br>
+                3. 复制 <code>sid_guard</code> 和 <code>UIFID</code>（无则取 <code>UIFID_TEMP</code>）的值，或直接从 Network 复制完整 Cookie
               </small>
             </div>
             
