@@ -889,6 +889,23 @@ button, .btn {
   background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23e2e8f0' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
 }
 
+.media-item-caption {
+  font-size: 0.85rem;
+  color: var(--text-color);
+  margin-bottom: 0.35rem;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.media-item-author {
+  font-weight: 600;
+  color: var(--primary-color);
+}
+
 /* Cookie modal styles */
 .cookie-modal {
   display: none;

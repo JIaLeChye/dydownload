@@ -32,12 +32,11 @@
                 class="form-control"
                 id="videoUrl"
                 style="resize: none; transition: height 0.2s ease;"
-                placeholder="粘贴抖音分享地址（只能粘贴一条）
+                placeholder="粘贴抖音分享地址（支持单条或多条，每行一条链接即可批量解析，最多 10 条）
 
-提示：如果出现&quot;链接已过期&quot;，请：
-1. 使用新的抖音分享链接
-2. 确保链接完整（包含 https://）
-3. 尝试从抖音APP重新分享"
+提示：
+1. 支持直接粘贴抖音 APP 分享文案，自动提取链接
+2. 按 Ctrl + Enter 可快捷解析"
                 autocomplete="off"
                 autocorrect="off"
                 autocapitalize="off"
@@ -221,6 +220,18 @@
               </small>
             </div>
             
+            <!-- 管理密码输入框（配置 ADMIN_PASSWORD 时自动显示） -->
+            <div class="mt-3" id="admin-password-group" hidden>
+              <label for="admin-password-input" class="form-label">🔒 管理密码 <span class="text-muted">(已启用安全保护)</span>:</label>
+              <input
+                type="password"
+                id="admin-password-input"
+                class="form-control"
+                placeholder="请输入服务器配置的 ADMIN_PASSWORD"
+                autocomplete="current-password"
+              />
+            </div>
+
             <!-- Vercel环境变量更新选项 -->
             <div class="vercel-options mt-3">
               <div class="form-check">
