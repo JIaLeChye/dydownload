@@ -3,6 +3,8 @@
   --bg-color: #ffffff;
   --text-color: #000000;
   --text-secondary: #6c757d;
+  --text-color-muted: #6c757d;
+  --text-muted: #6c757d;
   --card-bg: #f8f9fa;
   --secondary-bg: #e9ecef;
   --border-color: #dee2e6;
@@ -21,6 +23,8 @@
   --bg-color: #121212;
   --text-color: #ffffff;
   --text-secondary: #adb5bd;
+  --text-color-muted: #adb5bd;
+  --text-muted: #adb5bd;
   --card-bg: #1e1e1e;
   --secondary-bg: #2d2d2d;
   --border-color: #333333;
@@ -738,34 +742,151 @@ button, .btn {
 }
 
 /* ========== 暗色模式适配 ========== */
-[data-bs-theme="dark"] .cookie-status-info {
+[data-theme="dark"] .cookie-status-info {
   background: linear-gradient(135deg, #1e293b, #334155);
   border-color: rgba(255, 255, 255, 0.1);
 }
 
-[data-bs-theme="dark"] .cookie-status-info.status-valid {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.05));
+[data-theme="dark"] .cookie-status-info.status-valid {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(16, 185, 129, 0.06));
 }
 
-[data-bs-theme="dark"] .cookie-status-info.status-warning {
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.05));
+[data-theme="dark"] .cookie-status-info.status-warning {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(245, 158, 11, 0.06));
 }
 
-[data-bs-theme="dark"] .cookie-status-info.status-expired {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.05));
+[data-theme="dark"] .cookie-status-info.status-expired {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(239, 68, 68, 0.06));
 }
 
-[data-bs-theme="dark"] .status-label {
+[data-theme="dark"] .status-label {
   color: #cbd5e1;
 }
 
-[data-bs-theme="dark"] .status-value {
+[data-theme="dark"] .status-value {
   color: #f1f5f9;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.08);
 }
 
-[data-bs-theme="dark"] .status-row {
+[data-theme="dark"] .status-row {
   border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+/* ========== 快捷操作栏、历史记录、作品信息卡片 ========== */
+[data-theme="dark"] .text-muted {
+  color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] .btn-outline-secondary {
+  color: #cbd5e1;
+  border-color: #495057;
+}
+
+[data-theme="dark"] .btn-outline-secondary:hover {
+  color: #ffffff;
+  background-color: #343a40;
+  border-color: #6c757d;
+}
+
+.quick-actions .btn {
+  font-size: 0.875rem;
+}
+
+.parse-history {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 0.65rem 0.9rem;
+}
+
+.parse-history #clearHistoryBtn {
+  font-size: 0.82rem;
+  color: var(--text-secondary) !important;
+}
+
+.parse-history #clearHistoryBtn:hover {
+  color: var(--text-color) !important;
+}
+
+.parse-history-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.history-chip {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 5px 12px;
+  font-size: 0.82rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-color);
+  color: var(--text-color);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.history-chip:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.media-meta-card {
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+}
+
+.media-meta-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.media-meta-texts {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.media-meta-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text-color);
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+.media-meta-author {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.media-meta-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.quality-select {
+  width: auto;
+  min-width: 150px;
+  background-color: var(--input-bg);
+  color: var(--text-color);
+  border-color: var(--border-color);
+}
+
+[data-theme="dark"] .quality-select {
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23e2e8f0' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
 }
 
 /* Cookie modal styles */
@@ -916,6 +1037,17 @@ button, .btn {
   background: rgba(13, 110, 253, 0.1);
   color: var(--info-color, #0d6efd);
   border: 1px solid rgba(13, 110, 253, 0.2);
+}
+
+.cookie-status.warning {
+  display: block;
+  background: rgba(245, 158, 11, 0.12);
+  color: #b45309;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+[data-theme="dark"] .cookie-status.warning {
+  color: #fbbf24;
 }
 
 .cookie-modal-footer {
