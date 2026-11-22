@@ -2822,8 +2822,14 @@ class CookieManager {
         
         // 更新详细信息
         if (this.modalCookieSource && cookieInfo) {
-          this.modalCookieSource.textContent = cookieInfo.source === 'environment' ? '.env.local' : 
-                                              cookieInfo.source === 'scraper' ? '默认配置' : '未知';
+          const sourceLabels = {
+            'vercel-env': 'Vercel 环境变量',
+            'env-local': '.env.local',
+            'environment': '系统环境变量',
+            'scraper': '默认配置',
+            'none': '未配置'
+          };
+          this.modalCookieSource.textContent = sourceLabels[cookieInfo.source] || '未知';
         }
         
         if (this.modalCookieRemaining) {

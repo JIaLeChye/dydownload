@@ -1062,7 +1062,8 @@ app.get('/api/cookie-status', (req, res) => {
         
         // 首先尝试从环境变量获取（.env.local中的值或Vercel环境变量）
         let currentCookie = process.env.DOUYIN_COOKIE;
-        let cookieSource = 'environment';
+        const hasEnvLocalFile = !isVercel && fs.existsSync(envLocalPath) && !fs.statSync(envLocalPath).isDirectory();
+        let cookieSource = isVercel ? 'vercel-env' : (hasEnvLocalFile ? 'env-local' : 'environment');
         
         // 如果环境变量没有设置，从 scraper 实例获取
         if (!currentCookie && scraper && scraper.douyinApiHeaders && scraper.douyinApiHeaders.cookie) {
