@@ -777,27 +777,58 @@ try {
 
 app.post('/api/update-cookie', async (req, res) => {
     try {
-        const { cookie, updateVercel = false } = req.body;
+        const { cookie = '', uifid = '', updateVercel = false } = req.body || {};
+        const rawCookie = typeof cookie === 'string' ? cookie.trim() : '';
+        const rawUifid = typeof uifid === 'string' ? uifid.trim().replace(/^UIFID(_TEMP)?=/i, '').replace(/;+$/, '').trim() : '';
         
-        if (!cookie || cookie.trim().length === 0) {
-            return res.status(400).json({ success: false, message: 'Cookie值不能为空' });
+        if (!rawCookie && !rawUifid) {
+            return res.status(400).json({ success: false, message: '请输入 Cookie、sid_guard 或 UIFID 值' });
         }
 
-        let finalCookie = cookie.trim();
+        const existingCookie = (process.env.DOUYIN_COOKIE && !process.env.DOUYIN_COOKIE.includes('替换为您的sid_guard值'))
+            ? process.env.DOUYIN_COOKIE.trim()
+            : '';
 
-        // 智能格式处理
-        if (finalCookie.includes('sid_guard=')) {
-            // 完整cookie格式
-            finalCookie = finalCookie;
-        } else if (finalCookie.includes('%7C') || finalCookie.includes('|')) {
-            // 只有sid_guard值，自动包装
-            finalCookie = `sid_guard=${finalCookie};`;
+        let finalCookie = '';
+
+        if (rawCookie) {
+            // 智能格式处理
+            if (rawCookie.includes('sid_guard=')) {
+                finalCookie = rawCookie;
+            } else if (/^UIFID(_TEMP)?=/i.test(rawCookie)) {
+                // 用户在主输入框直接输入了 UIFID=...，保留已有 sid_guard（如果有）
+                const existingSidMatch = existingCookie.match(/sid_guard=[^;]+/);
+                finalCookie = existingSidMatch
+                    ? `${existingSidMatch[0]}; ${rawCookie.replace(/;+$/, '')};`
+                    : `${rawCookie.replace(/;+$/, '')};`;
+            } else if (rawCookie.includes('%7C') || rawCookie.includes('|')) {
+                // 只有sid_guard值，自动包装，并保留已有的 UIFID（若未提供新 UIFID）
+                const existingUifid = scraper._extractUifid(existingCookie);
+                finalCookie = `sid_guard=${rawCookie.replace(/;+$/, '')};`;
+                if (!rawUifid && existingUifid) {
+                    finalCookie += ` UIFID=${existingUifid};`;
+                }
+            } else {
+                return res.status(400).json({ success: false, message: 'Cookie格式不正确，请输入完整Cookie、sid_guard值或UIFID' });
+            }
         } else {
-            return res.status(400).json({ success: false, message: 'Cookie格式不正确' });
+            // 仅更新 UIFID：保留已有 Cookie 并在下面替换/追加 UIFID
+            finalCookie = existingCookie;
+        }
+
+        // 如果单独传了 uifid，将其合并写入 finalCookie（避免重复 UIFID 键）
+        if (rawUifid) {
+            const cleanedParts = finalCookie
+                .split(';')
+                .map(s => s.trim())
+                .filter(s => s && !/^UIFID(_TEMP)?=/i.test(s));
+            cleanedParts.push(`UIFID=${rawUifid}`);
+            finalCookie = cleanedParts.join('; ') + ';';
+            process.env.DOUYIN_UIFID = rawUifid;
         }
 
         // 🚀 动态更新环境变量中的cookie - 立即生效！
-        // 注意：这是用户主动更新的真实有效的 sid_guard，不是我们生成的测试数据
+        // 注意：这是用户主动更新的真实有效的 Cookie，不是我们生成的测试数据
         process.env.DOUYIN_COOKIE = finalCookie;
         console.log('🍪 DOUYIN_COOKIE 环境变量已更新，立即生效！[Cookie: ' + maskSensitiveInfo(finalCookie) + ']');
 
@@ -806,9 +837,14 @@ app.post('/api/update-cookie', async (req, res) => {
             scraper.updateCookie(finalCookie);
         }
 
-        // 🔍 检测用户提供的 sid_guard 过期状态
+        // 🔍 检测用户提供的 sid_guard 与 UIFID 状态
         const sidGuardStatus = checkCookieSidGuardExpiry(finalCookie);
-        console.log('🔍 sid_guard 状态检测:', sidGuardStatus.isValid ? '✅ 有效' : '❌ 过期/无效');
+        const extractedUifid = scraper._extractUifid(finalCookie);
+        const uifidStatus = {
+            configured: Boolean(extractedUifid),
+            preview: extractedUifid ? maskSensitiveInfo(extractedUifid, 'uifid') : null
+        };
+        console.log('🔍 sid_guard 状态检测:', sidGuardStatus.isValid ? '✅ 有效' : '⚠️ 未配置或已过期', '| UIFID:', uifidStatus.configured ? '✅ 已配置' : '未配置');
         if (sidGuardStatus.details && sidGuardStatus.details.remainingTime) {
             console.log('⏰ 剩余时间:', sidGuardStatus.details.remainingTime);
         }
@@ -920,6 +956,7 @@ app.post('/api/update-cookie', async (req, res) => {
                 remainingTime: sidGuardStatus.details ? sidGuardStatus.details.remainingTime : null,
                 remainingSeconds: sidGuardStatus.details ? sidGuardStatus.details.remainingSeconds : 0
             },
+            uifidStatus,
             vercelConfig: vercelEnv ? vercelEnv.getConfigStatus() : { isConfigured: false, available: false },
             vercelUpdateResult: vercelUpdateResult ? { success: true } : null
         });
@@ -951,15 +988,20 @@ app.get('/api/cookie-status', (req, res) => {
         }
         
         if (!currentCookie) {
+            const envUifid = scraper._extractUifid('');
             return res.json({
                 success: false,
-                message: 'Cookie 未设置',
+                message: 'Cookie 未设置（常规公开视频仍可免 Cookie 解析）',
                 sidGuardStatus: {
                     isValid: false,
                     isExpired: true,
                     error: '未找到任何Cookie配置',
                     remainingTime: null,
                     remainingSeconds: 0
+                },
+                uifidStatus: {
+                    configured: Boolean(envUifid),
+                    preview: envUifid ? maskSensitiveInfo(envUifid, 'uifid') : null
                 },
                 cookieInfo: {
                     source: 'none',
@@ -972,6 +1014,7 @@ app.get('/api/cookie-status', (req, res) => {
 
         // 检查是否是默认的占位符
         if (currentCookie.includes('替换为您的sid_guard值')) {
+            const envUifid = scraper._extractUifid('');
             return res.json({
                 success: false,
                 message: '当前使用的是默认占位符，需要设置真实Cookie',
@@ -982,6 +1025,10 @@ app.get('/api/cookie-status', (req, res) => {
                     remainingTime: null,
                     remainingSeconds: 0
                 },
+                uifidStatus: {
+                    configured: Boolean(envUifid),
+                    preview: envUifid ? maskSensitiveInfo(envUifid, 'uifid') : null
+                },
                 cookieInfo: {
                     source: cookieSource,
                     hasCookie: true,
@@ -991,8 +1038,13 @@ app.get('/api/cookie-status', (req, res) => {
             });
         }
 
-        // 检测 sid_guard 状态
+        // 检测 sid_guard 与 UIFID 状态
         const sidGuardStatus = checkCookieSidGuardExpiry(currentCookie);
+        const extractedUifid = scraper._extractUifid(currentCookie);
+        const uifidStatus = {
+            configured: Boolean(extractedUifid),
+            preview: extractedUifid ? maskSensitiveInfo(extractedUifid, 'uifid') : null
+        };
 
         res.json({
             success: sidGuardStatus.isValid,
@@ -1004,6 +1056,7 @@ app.get('/api/cookie-status', (req, res) => {
                 remainingTime: sidGuardStatus.details ? sidGuardStatus.details.remainingTime : null,
                 remainingSeconds: sidGuardStatus.details ? sidGuardStatus.details.remainingSeconds : 0
             },
+            uifidStatus,
             cookieInfo: {
                 source: cookieSource,
                 hasCookie: true,

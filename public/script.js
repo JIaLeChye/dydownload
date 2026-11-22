@@ -2109,6 +2109,7 @@ class CookieManager {
     this.cancelBtn = document.getElementById('cookie-cancel-btn');
     this.saveBtn = document.getElementById('cookie-save-btn');
     this.textarea = document.getElementById('cookie-textarea');
+    this.uifidInput = document.getElementById('uifid-input');
     this.status = document.getElementById('cookie-status');
     this.vercelCheckbox = document.getElementById('update-vercel-env');
     this.vercelStatus = document.getElementById('vercel-config-status');
@@ -2120,6 +2121,7 @@ class CookieManager {
     this.modalCookieSource = document.getElementById('modal-cookie-source');
     this.modalCookieRemaining = document.getElementById('modal-cookie-remaining');
     this.modalCookieValidity = document.getElementById('modal-cookie-validity');
+    this.modalCookieUifid = document.getElementById('modal-cookie-uifid');
     
     this.vercelConfig = null;
     this.statusCheckInterval = null; // 定期检查 sid_guard 状态的定时器
@@ -2273,33 +2275,29 @@ class CookieManager {
   }
   
   async saveCookie() {
-    const cookieValue = this.textarea?.value?.trim();
+    const cookieValue = this.textarea?.value?.trim() || '';
+    const uifidValue = this.uifidInput?.value?.trim() || '';
     const updateVercel = this.vercelCheckbox?.checked || false;
     
-    if (!cookieValue) {
-      this.showStatus('请输入cookie内容', 'error');
+    if (!cookieValue && !uifidValue) {
+      this.showStatus('请输入 Cookie、sid_guard 或 UIFID 值', 'error');
       return;
     }
     
-    // 智能验证cookie格式
-    let isValidFormat = false;
-    
-    // 检查是否是完整的sid_guard cookie格式
-    if (cookieValue.startsWith('sid_guard=') && (cookieValue.includes('%7C') || cookieValue.includes('|'))) {
-      isValidFormat = true;
-    }
-    // 检查是否只是sid_guard的值（包含编码或原始分隔符）
-    else if ((cookieValue.includes('%7C') || cookieValue.includes('|')) && !cookieValue.includes('=')) {
-      isValidFormat = true;
-    }
-    // 检查是否包含sid_guard参数
-    else if (cookieValue.includes('sid_guard=')) {
-      isValidFormat = true;
-    }
-    
-    if (!isValidFormat) {
-      this.showStatus('Cookie格式无效。请输入完整cookie或sid_guard值', 'error');
-      return;
+    // 如果填写了 Cookie / sid_guard 框，进行格式校验
+    if (cookieValue) {
+      let isValidFormat = false;
+      if (cookieValue.startsWith('sid_guard=') && (cookieValue.includes('%7C') || cookieValue.includes('|'))) {
+        isValidFormat = true;
+      } else if ((cookieValue.includes('%7C') || cookieValue.includes('|')) && !cookieValue.includes('=')) {
+        isValidFormat = true;
+      } else if (cookieValue.includes('sid_guard=') || /UIFID(_TEMP)?=/i.test(cookieValue)) {
+        isValidFormat = true;
+      }
+      if (!isValidFormat) {
+        this.showStatus('Cookie格式无效。请输入完整Cookie、sid_guard值或UIFID', 'error');
+        return;
+      }
     }
     
     const statusMessage = updateVercel ? 
@@ -2316,6 +2314,7 @@ class CookieManager {
         },
         body: JSON.stringify({ 
           cookie: cookieValue,
+          uifid: uifidValue,
           updateVercel: updateVercel
         })
       });
@@ -2742,6 +2741,15 @@ class CookieManager {
             this.modalCookieValidity.textContent = sidGuardStatus.remainingSeconds && sidGuardStatus.remainingSeconds < 3600 ? '即将过期' : '有效';
           } else {
             this.modalCookieValidity.textContent = '已过期';
+          }
+        }
+
+        if (this.modalCookieUifid) {
+          const uifidStatus = result.uifidStatus;
+          if (uifidStatus && uifidStatus.configured) {
+            this.modalCookieUifid.textContent = `已配置 (${uifidStatus.preview})`;
+          } else {
+            this.modalCookieUifid.textContent = '未配置（普通视频不受影响）';
           }
         }
       }
