@@ -1,7 +1,7 @@
 //#!/usr/bin/env node
 
 const Scraper = require('../bin/index.js')
-const { maskSensitiveInfo, formatRemainingTime, checkSidGuardExpiry } = require('../bin/index.js')
+const { maskSensitiveInfo, formatRemainingTime, checkSidGuardExpiry, isImagesAweme } = require('../bin/index.js')
 const express = require('express')
 const path = require('path')
 const fs = require('fs')
@@ -65,8 +65,8 @@ async function processDouyinVideo(url, debugMode = false) {
     const douyinData = await scraper.getDouyinVideoData(douyinId);
     let douyinUrls = await scraper.getDouyinNoWatermarkVideo(douyinData);
     
-    // Check if it's an image share (media_type 2 or 42)
-    const isImagesShare = [2, 42].includes(douyinData.aweme_detail.media_type);
+    // Check if it's an image share (media_type 2 or 42, or aweme_type 68)
+    const isImagesShare = isImagesAweme(douyinData.aweme_detail);
     let imgUrls = [];
     let videoUrls = [];
     
@@ -223,7 +223,18 @@ const checkCookieSidGuardExpiry = (cookieString) => {
         };
     }
 
-    const sidGuard = decodeURIComponent(sidGuardMatch[1]);
+    let sidGuard = sidGuardMatch[1];
+    try {
+        sidGuard = decodeURIComponent(sidGuard);
+    } catch (error) {
+        return {
+            isValid: false,
+            isExpired: true,
+            error: 'sid_guard 编码格式无效',
+            details: null
+        };
+    }
+
     return checkSidGuardExpiry(sidGuard);
 };
 
@@ -336,7 +347,7 @@ app.post('/zjcdn', async (req, res) => {
             const douyinData = await scraper.getDouyinVideoData(douyinId);
 
             // 检查是否为图片集分享
-            const isImagesShare = [2, 42].includes(douyinData.aweme_detail.media_type);
+            const isImagesShare = isImagesAweme(douyinData.aweme_detail);
             
             if (isImagesShare) {
                 // 图片集分享
@@ -412,8 +423,8 @@ app.post('/test-url', async (req, res) => {
             title: douyinData?.aweme_detail?.desc || '无标题',
             mediaType: douyinData?.aweme_detail?.media_type,
             author: douyinData?.aweme_detail?.author?.nickname || '未知作者',
-            hasVideo: !![2, 42].includes(douyinData?.aweme_detail?.media_type) ? false : true,
-            hasImages: [2, 42].includes(douyinData?.aweme_detail?.media_type),
+            hasVideo: !isImagesAweme(douyinData?.aweme_detail),
+            hasImages: isImagesAweme(douyinData?.aweme_detail),
             videoUrls: douyinData?.aweme_detail?.video?.play_addr?.url_list || [],
             imageUrls: douyinData?.aweme_detail?.images?.map(img => img?.url_list?.[0]) || []
         };
@@ -495,8 +506,8 @@ app.post('/test-videoid', async (req, res) => {
             title: douyinData?.aweme_detail?.desc || '无标题',
             mediaType: douyinData?.aweme_detail?.media_type,
             author: douyinData?.aweme_detail?.author?.nickname || '未知作者',
-            hasVideo: !![2, 42].includes(douyinData?.aweme_detail?.media_type) ? false : true,
-            hasImages: [2, 42].includes(douyinData?.aweme_detail?.media_type)
+            hasVideo: !isImagesAweme(douyinData?.aweme_detail),
+            hasImages: isImagesAweme(douyinData?.aweme_detail)
         };
 
         res.json(result);
@@ -778,7 +789,7 @@ app.post('/api/update-cookie', async (req, res) => {
         if (finalCookie.includes('sid_guard=')) {
             // 完整cookie格式
             finalCookie = finalCookie;
-        } else if (finalCookie.includes('%7C')) {
+        } else if (finalCookie.includes('%7C') || finalCookie.includes('|')) {
             // 只有sid_guard值，自动包装
             finalCookie = `sid_guard=${finalCookie};`;
         } else {
