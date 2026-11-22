@@ -4,6 +4,105 @@ const body = document.body;
 
 // Global variables
 let currentMediaItems = [];
+let currentMediaMeta = { title: '', author: '', music: null, qualities: [], livePhotos: [] };
+let lastParsedInput = '';
+
+const PARSE_HISTORY_KEY = 'dydownload_parse_history';
+const MAX_PARSE_HISTORY = 8;
+
+function sanitizeFilenamePart(text, maxLen = 45) {
+  if (!text || typeof text !== 'string') return '';
+  return text
+    .replace(/#[^\s#]+/g, '') // 去掉话题标签保持文件名简洁
+    .replace(/[\\/:*?"<>|\r\n\t]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLen)
+    .replace(/[,，.。:：;；!！?？、\-_\s]+$/g, '')
+    .trim();
+}
+
+function buildDownloadFilename(isImage, index, extension, customTitle = '') {
+  const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
+  const titlePart = sanitizeFilenamePart(customTitle || currentMediaMeta.title);
+  const authorPart = sanitizeFilenamePart(currentMediaMeta.author, 20);
+  const suffix = (currentMediaItems.length > 1 || index > 0) ? `_${index + 1}` : '';
+
+  if (titlePart) {
+    const base = authorPart ? `${authorPart}-${titlePart}` : titlePart;
+    return `${base}${suffix}${extension}`;
+  }
+
+  const filePrefix = isImage ? 'douyin_image' : 'douyin_video';
+  return `${filePrefix}_${timestamp}_${index + 1}${extension}`;
+}
+
+function loadParseHistory() {
+  try {
+    const raw = localStorage.getItem(PARSE_HISTORY_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function saveParseHistory(inputUrl, title, author) {
+  if (!inputUrl) return;
+  const cleanUrl = inputUrl.trim();
+  const displayLabel = sanitizeFilenamePart(title, 26) || sanitizeFilenamePart(author, 20) || cleanUrl.slice(0, 28);
+  const history = loadParseHistory().filter(item => item.url !== cleanUrl);
+  history.unshift({
+    url: cleanUrl,
+    label: displayLabel,
+    author: author || '',
+    time: Date.now()
+  });
+  try {
+    localStorage.setItem(PARSE_HISTORY_KEY, JSON.stringify(history.slice(0, MAX_PARSE_HISTORY)));
+  } catch (_) {}
+  renderParseHistory();
+}
+
+function renderParseHistory() {
+  const section = document.getElementById('parseHistorySection');
+  const listEl = document.getElementById('parseHistoryList');
+  if (!section || !listEl) return;
+
+  const history = loadParseHistory();
+  if (history.length === 0) {
+    section.hidden = true;
+    listEl.innerHTML = '';
+    return;
+  }
+
+  section.hidden = false;
+  listEl.innerHTML = '';
+  history.forEach((item) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'history-chip';
+    btn.title = item.url;
+    btn.textContent = item.author ? `${item.author} · ${item.label}` : item.label;
+    btn.addEventListener('click', () => {
+      const textarea = document.getElementById('videoUrl');
+      const submitBtn = document.getElementById('submit');
+      if (textarea) {
+        textarea.value = item.url;
+        autoResize(textarea);
+      }
+      if (submitBtn) submitBtn.click();
+    });
+    listEl.appendChild(btn);
+  });
+}
+
+function clearParseHistory() {
+  try {
+    localStorage.removeItem(PARSE_HISTORY_KEY);
+  } catch (_) {}
+  renderParseHistory();
+}
 
 // Performance constants
 const PERF_CONSTANTS = {
@@ -100,10 +199,66 @@ document.addEventListener('DOMContentLoaded', function() {
         debouncedAutoResize(this);
       }, 50);
     });
+
+    // 支持 Ctrl+Enter / Cmd+Enter 快捷解析
+    videoUrlTextarea.addEventListener('keydown', function(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        const submitBtn = document.getElementById('submit');
+        if (submitBtn) submitBtn.click();
+      }
+    });
     
     // 初始调整高度
     autoResize(videoUrlTextarea);
   }
+
+  // 一键粘贴并解析
+  const pasteParseBtn = document.getElementById('pasteParseBtn');
+  if (pasteParseBtn) {
+    pasteParseBtn.addEventListener('click', async function() {
+      try {
+        if (!navigator.clipboard || !navigator.clipboard.readText) {
+          showToast('当前浏览器不支持读取剪贴板，请手动粘贴', 'warning');
+          return;
+        }
+        const text = (await navigator.clipboard.readText() || '').trim();
+        if (!text) {
+          showToast('剪贴板为空', 'warning');
+          return;
+        }
+        if (videoUrlTextarea) {
+          videoUrlTextarea.value = text;
+          autoResize(videoUrlTextarea);
+        }
+        const submitBtn = document.getElementById('submit');
+        if (submitBtn) submitBtn.click();
+      } catch (err) {
+        showToast('无法读取剪贴板，请授权或手动粘贴', 'warning');
+      }
+    });
+  }
+
+  // 一键清空输入框
+  const clearInputBtn = document.getElementById('clearInputBtn');
+  if (clearInputBtn) {
+    clearInputBtn.addEventListener('click', function() {
+      if (videoUrlTextarea) {
+        videoUrlTextarea.value = '';
+        autoResize(videoUrlTextarea);
+        videoUrlTextarea.focus();
+      }
+    });
+  }
+
+  // 清空解析历史
+  const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+  if (clearHistoryBtn) {
+    clearHistoryBtn.addEventListener('click', clearParseHistory);
+  }
+
+  // 渲染解析历史
+  renderParseHistory();
 });
 
 document.addEventListener("DOMContentLoaded", function () {
@@ -117,6 +272,7 @@ document.addEventListener("DOMContentLoaded", function () {
         alert("请输入视频链接。");
         return;
       }
+      lastParsedInput = videoUrl.trim();
 
       const requestData = { url: videoUrl };
       const loadingDom = document.getElementById("loading");
@@ -237,6 +393,19 @@ function handleApiResponse(data) {
     }
 
     if (allUrls.length > 0) {
+      // 保存作品元信息（标题、作者、音乐、清晰度、实况图）
+      currentMediaMeta = {
+        title: data.data.title || '',
+        author: data.data.author || '',
+        music: data.data.music || null,
+        qualities: Array.isArray(data.data.qualities) ? data.data.qualities : [],
+        livePhotos: Array.isArray(data.data.livePhotos) ? data.data.livePhotos : []
+      };
+      renderMediaMetaCard();
+      if (lastParsedInput) {
+        saveParseHistory(lastParsedInput, currentMediaMeta.title, currentMediaMeta.author);
+      }
+
       // 对于图片集，即使在非 debug 模式下也要显示所有图片
       // 只对纯视频链接进行过滤（保留第一个）
       const isImageShare = data.data.isImagesShare || (data.data.img && data.data.img.length > 0 && (!data.data.video || data.data.video.length === 0));
@@ -252,10 +421,8 @@ function handleApiResponse(data) {
         allUrls = urlsWithType.map(item => item.url);
       }
       
-
-      
-  // 显示媒体预览（非 debug 只显示一条也兼容）
-  displayMediaPreview(allUrls);
+      // 显示媒体预览（非 debug 只显示一条也兼容）
+      displayMediaPreview(allUrls);
       
       // 移动端友好的反馈
       if (window.innerWidth <= 768) {
@@ -414,14 +581,10 @@ function downloadMedia(url, index, isBatchDownload = false) {
       }
     }
 
-    // 生成时间戳
-    const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
-
-    // 确定文件类型
+    // 确定文件类型与下载文件名（优先使用作者+作品标题）
     const mediaItem = document.querySelector(`[data-index="${index}"]`);
-    const isImage = mediaItem && mediaItem.querySelector('img');
-    const filePrefix = isImage ? 'douyin_image' : 'douyin_video';
-    const fileName = `${filePrefix}_${timestamp}_${index + 1}${extension}`;
+    const isImage = !!(mediaItem && mediaItem.querySelector('img'));
+    const fileName = buildDownloadFilename(isImage, index, extension);
 
     // 检查是否为视频文件（包括 zjcdn 域名和 mp4 扩展名）
     const isVideoFile = !isImage && (
@@ -558,14 +721,139 @@ function finalFallbackDownload(url, fileName, isBatchDownload = false) {
 // 重置界面函数
 function resetInterface() {
   const mediaPreview = document.getElementById("mediaPreview");
+  const metaCard = document.getElementById("mediaMetaCard");
   
-  if (mediaPreview) mediaPreview.style.display = 'none';
+  if (mediaPreview) {
+    mediaPreview.hidden = true;
+    mediaPreview.style.display = '';
+  }
+  if (metaCard) {
+    metaCard.hidden = true;
+  }
   
-  // 重置媒体项目
+  // 重置媒体项目与元信息
   currentMediaItems = [];
+  currentMediaMeta = { title: '', author: '', music: null, qualities: [], livePhotos: [] };
+}
+
+function renderMediaMetaCard() {
+  const metaCard = document.getElementById('mediaMetaCard');
+  const titleEl = document.getElementById('mediaMetaTitle');
+  const authorEl = document.getElementById('mediaMetaAuthor');
+  const qualitySelect = document.getElementById('qualitySelect');
+  const audioBtn = document.getElementById('downloadAudioBtn');
+
+  if (!metaCard) return;
+
+  const hasTitle = Boolean(currentMediaMeta.title);
+  const hasAuthor = Boolean(currentMediaMeta.author);
+  const hasQualities = currentMediaMeta.qualities && currentMediaMeta.qualities.length > 1;
+  const hasMusic = Boolean(currentMediaMeta.music && currentMediaMeta.music.url);
+
+  if (!hasTitle && !hasAuthor && !hasQualities && !hasMusic) {
+    metaCard.hidden = true;
+    return;
+  }
+
+  metaCard.hidden = false;
+  if (titleEl) {
+    titleEl.textContent = currentMediaMeta.title || '无标题作品';
+  }
+  if (authorEl) {
+    authorEl.textContent = currentMediaMeta.author ? `@${currentMediaMeta.author}` : '';
+    authorEl.hidden = !hasAuthor;
+  }
+
+  if (qualitySelect) {
+    if (hasQualities) {
+      qualitySelect.innerHTML = '';
+      currentMediaMeta.qualities.forEach((q, idx) => {
+        const opt = document.createElement('option');
+        opt.value = String(idx);
+        opt.textContent = q.label;
+        qualitySelect.appendChild(opt);
+      });
+      qualitySelect.hidden = false;
+      qualitySelect.onchange = function() {
+        const selected = currentMediaMeta.qualities[Number(this.value)];
+        if (!selected || !selected.url) return;
+        mediaUrls = [selected.url];
+        if (currentMediaItems[0]) {
+          currentMediaItems[0].url = selected.url;
+        }
+        displayMediaItems([{
+          url: selected.url,
+          type: 'video',
+          index: 0,
+          loaded: true,
+          source: 'quality-switch'
+        }]);
+        showToast(`🎬 已切换清晰度：${selected.label}`, 'info');
+      };
+    } else {
+      qualitySelect.hidden = true;
+      qualitySelect.onchange = null;
+    }
+  }
+
+  if (audioBtn) {
+    if (hasMusic) {
+      audioBtn.hidden = false;
+      audioBtn.onclick = function() {
+        const musicInfo = currentMediaMeta.music;
+        const audioName = buildDownloadFilename(false, 0, '.mp3', musicInfo.title || currentMediaMeta.title);
+        showToast('🎵 正在下载背景音频...', 'info');
+        proxyDownload(musicInfo.url, audioName, false);
+      };
+    } else {
+      audioBtn.hidden = true;
+      audioBtn.onclick = null;
+    }
+  }
+}
+
+function downloadMediaByIndex(index) {
+  const item = currentMediaItems[index];
+  if (!item || !item.url) return;
+  downloadMedia(item.url, index);
+}
+
+function retryLoadMediaByIndex(index) {
+  const item = currentMediaItems[index];
+  if (!item || !item.url) return;
+  retryLoadMedia(item.url, index);
+}
+
+async function copyMediaUrlByIndex(index) {
+  const item = currentMediaItems[index];
+  if (!item || !item.url) return;
+  try {
+    const result = await copyTextToClipboard(item.url);
+    showToast(result === '成功' ? '📋 直链已复制到剪贴板' : '❌ 复制失败，请手动复制', result === '成功' ? 'success' : 'error');
+  } catch (_) {
+    showToast('❌ 复制失败', 'error');
+  }
+}
+
+function downloadLivePhoto(imageIndex) {
+  const lp = (currentMediaMeta.livePhotos || []).find(item => item.index === imageIndex);
+  if (!lp || !lp.url) {
+    showToast('未找到实况视频流', 'warning');
+    return;
+  }
+  const fileName = buildDownloadFilename(false, imageIndex, '.mp4');
+  showToast('🎞️ 正在下载实况视频...', 'info');
+  proxyDownload(lp.url, fileName, false);
 }
 
 function copyTextToClipboard(textToCopy) {
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(textToCopy).then(() => '成功').catch(() => fallbackCopyText(textToCopy));
+  }
+  return fallbackCopyText(textToCopy);
+}
+
+function fallbackCopyText(textToCopy) {
   return new Promise((resolve, reject) => {
     const tempInput = document.createElement('input');
     tempInput.style.position = 'absolute';
@@ -597,10 +885,12 @@ function displayMediaPreview(urls) {
   
   if (!urls || urls.length === 0) {
     previewContainer.hidden = true;
+    previewContainer.style.display = '';
     return;
   }
   
   previewContainer.hidden = false;
+  previewContainer.style.display = '';
   
   // 在移动端自动启用全屏模式
   if (window.innerWidth <= 768) {
@@ -766,13 +1056,14 @@ function displayMediaItems(mediaItems) {
   
   const itemsHtml = mediaItems.map((item, index) => {
     let mediaContent;
+    const hasLivePhoto = item.type === 'image' && (currentMediaMeta.livePhotos || []).some(lp => lp.index === index);
     
     if (item.type === 'image') {
       mediaContent = `<img src="${item.url}" alt="图片 ${index + 1}" onclick="handleMediaClick(${index}, '${item.type}')" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
                       <div style="display:none; padding: 2rem; text-align: center; background: var(--card-bg); border-radius: 8px;">
                         <div style="font-size: 2rem; margin-bottom: 0.5rem;">🖼️</div>
                         <div>图片加载失败</div>
-                        <button onclick="retryLoadMedia('${item.url}', ${index})" class="btn btn-sm btn-outline-primary mt-2">重试</button>
+                        <button type="button" onclick="event.stopPropagation(); retryLoadMediaByIndex(${index})" class="btn btn-sm btn-outline-primary mt-2">重试</button>
                       </div>`;
     } else {
       // 使用代理URL来避免403错误
@@ -784,18 +1075,22 @@ function displayMediaItems(mediaItems) {
                      <div style="display:none; padding: 2rem; text-align: center; background: var(--card-bg); border-radius: 8px;">
                        <div style="font-size: 2rem; margin-bottom: 0.5rem;">🎬</div>
                        <div>视频加载失败</div>
-                       <button onclick="retryLoadMedia('${item.url}', ${index})" class="btn btn-sm btn-outline-primary mt-2">重试</button>
+                       <button type="button" onclick="event.stopPropagation(); retryLoadMediaByIndex(${index})" class="btn btn-sm btn-outline-primary mt-2">重试</button>
                      </div>`;
     }
     
     const mediaInfo = item.type === 'image' && item.loaded && item.width && item.height
       ? `<div class="media-info">📸 图片 • ${item.width} × ${item.height}px</div>`
       : `<div class="media-info">${item.type === 'image' ? '📸 图片' : '🎬 视频'}</div>`;
+
+    const livePhotoBtn = hasLivePhoto
+      ? `<button type="button" class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); downloadLivePhoto(${index})" title="下载该图片的动态实况视频">🎞️ 实况视频</button>`
+      : '';
     
     return `
-      <div class="media-item" data-index="${index}" data-type="${item.type}" data-url="${item.url}" onclick="handleMediaItemClick(event, ${index}, '${item.type}')">
+      <div class="media-item" data-index="${index}" data-type="${item.type}" onclick="handleMediaItemClick(event, ${index}, '${item.type}')">
         <div class="media-type">${item.type === 'image' ? '📸 图片' : '🎬 视频'} ${index + 1}</div>
-        <button class="media-download-btn" onclick="event.stopPropagation(); downloadMedia('${item.url}', ${index})" title="智能下载（视频自动使用代理）">
+        <button type="button" class="media-download-btn" onclick="event.stopPropagation(); downloadMediaByIndex(${index})" title="智能下载（视频自动使用代理）">
           ⬇️
         </button>
         <div class="media-content">
@@ -803,9 +1098,13 @@ function displayMediaItems(mediaItems) {
         </div>
         ${mediaInfo}
         <div class="media-actions mt-2">
-          <button class="btn btn-sm btn-outline-success" onclick="event.stopPropagation(); downloadMedia('${item.url}', ${index})" title="智能下载（视频自动使用代理）">
+          <button type="button" class="btn btn-sm btn-outline-success" onclick="event.stopPropagation(); downloadMediaByIndex(${index})" title="智能下载（视频自动使用代理）">
             ⬇️ 智能下载
           </button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" onclick="event.stopPropagation(); copyMediaUrlByIndex(${index})" title="复制无水印媒体直链">
+            📋 复制直链
+          </button>
+          ${livePhotoBtn}
         </div>
       </div>
     `;
@@ -859,7 +1158,6 @@ function toggleView(viewMode) {
   
   if (mediaUrls.length > 0) {
     // 重新渲染媒体项目
-    checkMediaType();
     Promise.all(mediaUrls.map((url, index) => checkMediaType(url, index)))
       .then(mediaItems => {
         displayMediaItems(mediaItems);
@@ -1125,14 +1423,11 @@ class DownloadManager extends EventTarget {
     window.URL.revokeObjectURL(downloadUrl);
   }
 
-  // 生成文件名
+  // 生成文件名（优先使用作者+作品标题）
   generateFilename(item, index) {
-    const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
     const isImage = item.type === 'image';
     const extension = this.getFileExtension(item.url);
-    const prefix = isImage ? 'douyin_image' : 'douyin_video';
-    
-    return `${prefix}_${timestamp}_${index + 1}${extension}`;
+    return buildDownloadFilename(isImage, index, extension);
   }
 
   // 获取文件扩展名
@@ -2112,6 +2407,7 @@ class CookieManager {
     this.uifidInput = document.getElementById('uifid-input');
     this.status = document.getElementById('cookie-status');
     this.vercelCheckbox = document.getElementById('update-vercel-env');
+    this.redeployCheckbox = document.getElementById('trigger-vercel-redeploy');
     this.vercelStatus = document.getElementById('vercel-config-status');
     
     // Modal内的状态显示元素
@@ -2170,6 +2466,12 @@ class CookieManager {
     // 检查框状态变化
     if (this.vercelCheckbox) {
       this.vercelCheckbox.addEventListener('change', () => {
+        if (this.redeployCheckbox) {
+          this.redeployCheckbox.disabled = !this.vercelCheckbox.checked;
+          if (!this.vercelCheckbox.checked) {
+            this.redeployCheckbox.checked = false;
+          }
+        }
         if (this.vercelCheckbox.checked && !this.vercelConfig?.config?.isConfigured) {
           this.loadVercelConfig();
         }
@@ -2236,17 +2538,32 @@ class CookieManager {
       `;
       this.vercelCheckbox.disabled = true;
       this.vercelCheckbox.checked = false;
+      if (this.redeployCheckbox) {
+        this.redeployCheckbox.disabled = true;
+        this.redeployCheckbox.checked = false;
+      }
       return;
     }
     
     // 如果Vercel功能可用且已配置
     if (config.isConfigured) {
+      const hookTip = config.hasDeployHook ? '（已配置 Deploy Hook）' : '（通过 Vercel API 触发）';
       this.vercelStatus.innerHTML = `
         <div class="text-success small">
-          ✅ Vercel配置已完成，支持自动更新环境变量
+          ✅ Vercel配置已完成，支持同步环境变量与自动重新部署 ${hookTip}
         </div>
       `;
       this.vercelCheckbox.disabled = false;
+      // 线上 Vercel 环境默认勾选同步与重新部署，避免忘记勾选导致冷启动回滚
+      if (config.isVercel) {
+        this.vercelCheckbox.checked = true;
+        if (this.redeployCheckbox) {
+          this.redeployCheckbox.disabled = false;
+          this.redeployCheckbox.checked = true;
+        }
+      } else if (this.redeployCheckbox) {
+        this.redeployCheckbox.disabled = !this.vercelCheckbox.checked;
+      }
     } else {
       // Vercel功能可用但未配置
       const missing = [];
@@ -2260,6 +2577,10 @@ class CookieManager {
       `;
       this.vercelCheckbox.disabled = true;
       this.vercelCheckbox.checked = false;
+      if (this.redeployCheckbox) {
+        this.redeployCheckbox.disabled = true;
+        this.redeployCheckbox.checked = false;
+      }
     }
   }
   
@@ -2278,6 +2599,7 @@ class CookieManager {
     const cookieValue = this.textarea?.value?.trim() || '';
     const uifidValue = this.uifidInput?.value?.trim() || '';
     const updateVercel = this.vercelCheckbox?.checked || false;
+    const triggerRedeploy = Boolean(updateVercel && this.redeployCheckbox?.checked);
     
     if (!cookieValue && !uifidValue) {
       this.showStatus('请输入 Cookie、sid_guard 或 UIFID 值', 'error');
@@ -2300,9 +2622,11 @@ class CookieManager {
       }
     }
     
-    const statusMessage = updateVercel ? 
-      '正在更新Cookie并备份到Vercel...' : 
-      '正在动态更新Cookie...';
+    const statusMessage = triggerRedeploy
+      ? '正在更新 Cookie、同步 Vercel 并触发重新部署...'
+      : updateVercel
+        ? '正在更新 Cookie 并同步到 Vercel...'
+        : '正在动态更新 Cookie...';
     this.showStatus(statusMessage, 'info');
     this.saveBtn.disabled = true;
     
@@ -2315,53 +2639,33 @@ class CookieManager {
         body: JSON.stringify({ 
           cookie: cookieValue,
           uifid: uifidValue,
-          updateVercel: updateVercel
+          updateVercel,
+          triggerRedeploy
         })
       });
       
       const result = await response.json();
       
       if (response.ok && result.success) {
-        // 🎉 突出显示立即生效的特性
-        if (result.immediate && result.noRedeployNeeded) {
-          this.showStatus('🎉 Cookie已更新并立即生效！无需重新部署 🚀', 'success');
-          
-          // 显示额外的成功提示
+        const vr = result.vercelUpdateResult || {};
+        const vercelFailed = Boolean(vr.attempted && !vr.success);
+        const redeployFailed = Boolean(vr.redeploy && vr.redeploy.attempted && !vr.redeploy.triggered);
+        const hasWarning = vercelFailed || redeployFailed || (result.isVercel && !updateVercel);
+
+        // 如实显示后端返回的状态与错误原因，不再吞掉 Vercel 报错
+        this.showStatus(result.message || 'Cookie 更新成功', hasWarning ? 'warning' : 'success');
+        showToast(result.message || 'Cookie 更新成功', hasWarning ? 'warning' : 'success');
+
+        // 立即刷新右上角按钮与弹窗内的状态信息
+        this.updateStatusDisplay(result);
+        this.updateModalStatus();
+
+        // 若完全成功则自动关闭弹窗；若有警告/Vercel错误则保留弹窗方便查看原因
+        if (!hasWarning) {
           setTimeout(() => {
-            showToast('🚀 Cookie动态更新成功，立即可用！', 'success');
-          }, 800);
-        } else {
-          this.showStatus(result.message, 'success');
+            this.closeModal();
+          }, 2200);
         }
-        
-        // 显示 sid_guard 状态信息
-        if (result.sidGuardStatus) {
-          const { sidGuardStatus } = result;
-          if (sidGuardStatus.isValid) {
-            const timeMsg = sidGuardStatus.remainingTime ? ` (剩余: ${sidGuardStatus.remainingTime})` : '';
-            setTimeout(() => {
-              showToast(`✅ sid_guard 状态正常${timeMsg}`, 'success');
-            }, 1500);
-          } else {
-            setTimeout(() => {
-              showToast(`❌ sid_guard 状态异常: ${sidGuardStatus.error}`, 'error');
-            }, 1500);
-          }
-          
-          // 立即更新状态显示
-          this.updateStatusDisplay(result);
-        }
-        
-        // 如果有Vercel备份
-        if (result.vercelUpdateResult && updateVercel) {
-          setTimeout(() => {
-            this.showStatus('🎉 Cookie立即生效 + Vercel环境变量已备份', 'success');
-          }, 1200);
-        }
-        
-        setTimeout(() => {
-          this.closeModal();
-        }, 2500);
       } else {
         this.showStatus(result.message || 'Cookie更新失败', 'error');
       }
@@ -2427,215 +2731,7 @@ class CookieManager {
     // 设置定期检查
     this.statusCheckInterval = setInterval(dynamicCheck, this.currentCheckInterval);
   }
-  
-  // 新增：刷新状态（带视觉反馈）
-  async refreshStatus() {
-    if (this.refreshBtn) {
-      // 添加loading状态
-      const originalIcon = this.refreshBtn.querySelector('.btn-icon').textContent;
-      this.refreshBtn.querySelector('.btn-icon').textContent = '⏳';
-      this.refreshBtn.disabled = true;
-      
-      try {
-        await this.checkSidGuardStatus();
-        
-        // 成功反馈
-        this.refreshBtn.querySelector('.btn-icon').textContent = '✅';
-        setTimeout(() => {
-          this.refreshBtn.querySelector('.btn-icon').textContent = originalIcon;
-          this.refreshBtn.disabled = false;
-        }, 1000);
-      } catch (error) {
-        // 错误反馈
-        this.refreshBtn.querySelector('.btn-icon').textContent = '❌';
-        setTimeout(() => {
-          this.refreshBtn.querySelector('.btn-icon').textContent = originalIcon;
-          this.refreshBtn.disabled = false;
-        }, 1000);
-      }
-    }
-  }
 
-  // 新增：检查 sid_guard 状态
-  async checkSidGuardStatus() {
-    try {
-      const response = await fetch('/api/cookie-status');
-      if (response.ok) {
-        const result = await response.json();
-        this.updateStatusDisplay(result);
-      } else {
-        this.updateStatusDisplay({
-          success: false,
-          message: '状态检查失败',
-          sidGuardStatus: {
-            isValid: false,
-            isExpired: true,
-            error: '无法连接到服务器',
-            remainingTime: null
-          }
-        });
-      }
-    } catch (error) {
-      console.error('检查 Cookie 状态失败:', error);
-      this.updateStatusDisplay({
-        success: false,
-        message: '网络错误',
-        sidGuardStatus: {
-          isValid: false,
-          isExpired: true,
-          error: '网络连接失败',
-          remainingTime: null
-        }
-      });
-    }
-  }
-  
-  // 新增：更新状态显示
-  updateStatusDisplay(result) {
-    if (!this.statusDisplay || !this.statusIcon || !this.statusText) {
-      return;
-    }
-
-    const { sidGuardStatus, cookieInfo } = result;
-    
-    // 移除所有状态类
-    this.statusDisplay.classList.remove('valid', 'expired', 'warning');
-    
-    // 更新基本信息
-    if (this.statusTitle) {
-      this.statusTitle.textContent = 'Cookie 状态';
-    }
-    
-    // 更新详细信息
-    if (this.cookieSource && cookieInfo) {
-      this.cookieSource.textContent = cookieInfo.source === 'environment' ? '.env.local' : 
-                                      cookieInfo.source === 'scraper' ? '默认配置' : '未知';
-    }
-    
-    if (this.cookieRemaining && sidGuardStatus.remainingTime) {
-      this.cookieRemaining.textContent = sidGuardStatus.remainingTime;
-    }
-
-    if (sidGuardStatus.error) {
-      // 错误状态
-      this.statusIcon.textContent = '❌';
-      this.statusText.textContent = sidGuardStatus.error;
-      this.statusDisplay.classList.add('expired');
-      if (this.cookieValidity) {
-        this.cookieValidity.textContent = '错误';
-      }
-    } else if (sidGuardStatus.isValid) {
-      // 有效状态
-      this.statusIcon.textContent = '✅';
-      const remainingTime = sidGuardStatus.remainingTime || '未知';
-      
-      // 如果剩余时间少于1小时，显示警告
-      if (sidGuardStatus.remainingSeconds && sidGuardStatus.remainingSeconds < 3600) {
-        this.statusDisplay.classList.add('warning');
-        this.statusIcon.textContent = '⚠️';
-        this.statusText.textContent = `即将过期`;
-        if (this.cookieValidity) {
-          this.cookieValidity.textContent = '即将过期';
-        }
-      } else {
-        this.statusDisplay.classList.add('valid');
-        this.statusText.textContent = `运行正常`;
-        if (this.cookieValidity) {
-          this.cookieValidity.textContent = '有效';
-        }
-      }
-    } else {
-      // 已过期
-      this.statusIcon.textContent = '❌';
-      this.statusText.textContent = '会话已过期';
-      this.statusDisplay.classList.add('expired');
-      if (this.cookieValidity) {
-        this.cookieValidity.textContent = '已过期';
-      }
-      if (this.cookieRemaining) {
-        this.cookieRemaining.textContent = '已过期';
-      }
-    }
-    
-    // 显示状态和详情
-    this.statusDisplay.style.display = 'block';
-    
-    // 根据响应式状态设置显示模式
-    this.updateDisplayMode();
-    
-    // 如果是过期或即将过期，显示更明显的提示
-    if (sidGuardStatus.isExpired || (sidGuardStatus.remainingSeconds && sidGuardStatus.remainingSeconds < 3600)) {
-      this.showExpiryNotification(sidGuardStatus);
-    }
-  }
-  
-  // 新增：切换状态详情显示
-  toggleStatusDetails() {
-    if (this.statusDetails) {
-      const isVisible = this.statusDetails.style.display !== 'none';
-      this.statusDetails.style.display = isVisible ? 'none' : 'block';
-    }
-  }
-  
-  // 新增：显示过期通知
-  showExpiryNotification(sidGuardStatus) {
-    // 创建或更新通知
-    let notification = document.getElementById('expiry-notification');
-    if (!notification) {
-      notification = document.createElement('div');
-      notification.id = 'expiry-notification';
-      notification.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        padding: 15px 20px;
-        background: linear-gradient(135deg, #ff6b6b, #ff8e8e);
-        color: white;
-        border-radius: 10px;
-        box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
-        z-index: 10000;
-        font-weight: 500;
-        min-width: 300px;
-        animation: slideInRight 0.3s ease-out;
-      `;
-      document.body.appendChild(notification);
-    }
-    
-    if (sidGuardStatus.isExpired) {
-      notification.innerHTML = `
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <span style="font-size: 18px;">❌</span>
-          <div>
-            <div style="font-weight: bold;">Cookie 已过期</div>
-            <div style="font-size: 12px; opacity: 0.9;">请更新 .env.local 中的 sid_guard</div>
-          </div>
-        </div>
-      `;
-    } else if (sidGuardStatus.remainingSeconds < 3600) {
-      notification.innerHTML = `
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <span style="font-size: 18px;">⚠️</span>
-          <div>
-            <div style="font-weight: bold;">Cookie 即将过期</div>
-            <div style="font-size: 12px; opacity: 0.9;">剩余: ${sidGuardStatus.remainingTime}</div>
-          </div>
-        </div>
-      `;
-    }
-    
-    // 5秒后自动隐藏
-    setTimeout(() => {
-      if (notification && notification.parentNode) {
-        notification.style.animation = 'slideOutRight 0.3s ease-in';
-        setTimeout(() => {
-          if (notification.parentNode) {
-            notification.parentNode.removeChild(notification);
-          }
-        }, 300);
-      }
-    }, 5000);
-  }
-  
   // 检查 Cookie 状态
   async checkCookieStatus() {
     try {

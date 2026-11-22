@@ -31,6 +31,90 @@ const isImagesAweme = (awemeDetail) => {
     return Array.isArray(awemeDetail.images) && awemeDetail.images.length > 0 && !awemeDetail.video?.play_addr?.url_list?.length;
 };
 
+const extractMediaMeta = (awemeDetail) => {
+    if (!awemeDetail || typeof awemeDetail !== 'object') {
+        return { title: '', author: '', music: null, qualities: [], livePhotos: [] };
+    }
+
+    const title = (awemeDetail.desc || '').trim();
+    const author = (awemeDetail.author?.nickname || '').trim();
+
+    // 提取背景音乐信息
+    let music = null;
+    const musicUrl = awemeDetail.music?.play_url?.url_list?.[0] || awemeDetail.music?.play_url?.uri || '';
+    if (musicUrl && typeof musicUrl === 'string' && musicUrl.startsWith('http')) {
+        music = {
+            title: (awemeDetail.music?.title || title || 'douyin_audio').trim(),
+            author: (awemeDetail.music?.author || author || '').trim(),
+            url: musicUrl
+        };
+    }
+
+    // 提取多档清晰度列表（去重并按清晰度/码率从高到低排序）
+    const qualities = [];
+    const seenUrls = new Set();
+    const video = awemeDetail.video;
+    if (video && !isImagesAweme(awemeDetail)) {
+        const videoUri = video.play_addr?.uri;
+        if (videoUri) {
+            const simpleVideoId = videoUri.replace(/^video\//, '');
+            const snssdkUrl = `https://aweme.snssdk.com/aweme/v1/play/?video_id=${simpleVideoId}&ratio=1080p&line=0`;
+            seenUrls.add(snssdkUrl);
+            qualities.push({
+                label: '1080p 原画 (推荐)',
+                ratio: '1080p',
+                bitRate: Number.MAX_SAFE_INTEGER,
+                sizeMB: null,
+                url: snssdkUrl
+            });
+        }
+
+        const bitRates = Array.isArray(video.bit_rate) ? [...video.bit_rate] : [];
+        bitRates.sort((a, b) => (b?.bit_rate || 0) - (a?.bit_rate || 0));
+        const seenGear = new Set();
+        for (const br of bitRates) {
+            const urlList = br?.play_addr?.url_list || [];
+            const preferred = urlList.find(u => u && u.includes('zjcdn.com')) || urlList[0];
+            if (!preferred || !preferred.startsWith('http') || seenUrls.has(preferred)) continue;
+            const cleanUrl = preferred.replace('/playwm/', '/play/');
+            const height = br?.play_addr?.height || 0;
+            const width = br?.play_addr?.width || 0;
+            const gear = br?.gear_name || (height ? `${Math.min(width, height)}p` : '标清');
+            const sizeBytes = br?.play_addr?.data_size || 0;
+            const sizeMB = sizeBytes > 0 ? Number((sizeBytes / 1024 / 1024).toFixed(1)) : null;
+            const gearKey = `${gear}_${sizeMB || ''}`;
+            if (seenGear.has(gearKey)) continue;
+            seenGear.add(gearKey);
+            seenUrls.add(cleanUrl);
+            const dimText = (width && height) ? `${width}x${height}` : gear;
+            qualities.push({
+                label: `${dimText}${sizeMB ? ` (${sizeMB} MB)` : ''}`,
+                ratio: gear,
+                bitRate: br?.bit_rate || 0,
+                sizeMB,
+                url: cleanUrl
+            });
+        }
+    }
+
+    // 提取图集中的 LivePhoto 实况视频流（按图片索引映射）
+    const livePhotos = [];
+    if (Array.isArray(awemeDetail.images)) {
+        awemeDetail.images.forEach((img, idx) => {
+            const lpUrls = img?.video?.play_addr?.url_list || [];
+            const lpUrl = lpUrls.find(u => u && u.startsWith('http'));
+            if (lpUrl) {
+                livePhotos.push({
+                    index: idx,
+                    url: lpUrl.replace('/playwm/', '/play/')
+                });
+            }
+        });
+    }
+
+    return { title, author, music, qualities, livePhotos };
+};
+
 // 工具函数：安全地隐藏敏感信息用于日志输出
 const maskSensitiveInfo = (str, type = 'cookie') => {
     if (!str || typeof str !== 'string') return str;
@@ -907,3 +991,4 @@ module.exports.maskSensitiveInfo = maskSensitiveInfo;
 module.exports.formatRemainingTime = formatRemainingTime;
 module.exports.checkSidGuardExpiry = checkSidGuardExpiry;
 module.exports.isImagesAweme = isImagesAweme;
+module.exports.extractMediaMeta = extractMediaMeta;

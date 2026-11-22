@@ -44,6 +44,14 @@
                 spellcheck="false"
               ></textarea>
             </div>
+            <div class="d-flex gap-2 mb-2 quick-actions">
+              <button type="button" id="pasteParseBtn" class="btn btn-sm btn-outline-secondary flex-fill" title="从剪贴板粘贴并立即解析">
+                📋 粘贴并解析
+              </button>
+              <button type="button" id="clearInputBtn" class="btn btn-sm btn-outline-secondary" title="清空输入框">
+                🧹 清空
+              </button>
+            </div>
             <button type="submit" id="submit" class="btn btn-primary btn-lg">
               <span
                 id="loading"
@@ -54,6 +62,15 @@
               <span id="submit-text">解析</span>
             </button>
           </form>
+
+          <!-- Parse History -->
+          <div id="parseHistorySection" class="parse-history mt-3" hidden>
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <small class="text-muted">🕒 最近解析</small>
+              <button type="button" id="clearHistoryBtn" class="btn btn-link btn-sm p-0 text-muted text-decoration-none">清空</button>
+            </div>
+            <div id="parseHistoryList" class="parse-history-list"></div>
+          </div>
         </div>
       </div>
       
@@ -61,6 +78,20 @@
       <div class="row justify-content-center">
         <div class="col-12" id="mediaPreviewColumn">
           <div id="mediaPreview" class="mt-4" hidden>
+            <div id="mediaMetaCard" class="media-meta-card mb-3" hidden>
+              <div class="media-meta-header">
+                <div class="media-meta-texts">
+                  <div id="mediaMetaTitle" class="media-meta-title"></div>
+                  <div id="mediaMetaAuthor" class="media-meta-author"></div>
+                </div>
+                <div class="media-meta-controls">
+                  <select id="qualitySelect" class="form-select form-select-sm quality-select" hidden aria-label="选择视频清晰度"></select>
+                  <button type="button" id="downloadAudioBtn" class="btn btn-sm btn-outline-info" hidden title="下载视频背景音乐">
+                    🎵 下载音频
+                  </button>
+                </div>
+              </div>
+            </div>
             <div class="d-flex align-items-center justify-content-center mb-3" style="gap: 12px;">
               <h5 class="mb-0 flex-shrink-0">📱 内容预览</h5>
               <div class="d-flex align-items-center" style="gap: 5px;">
@@ -195,7 +226,13 @@
               <div class="form-check">
                 <input class="form-check-input" type="checkbox" id="update-vercel-env" />
                 <label class="form-check-label" for="update-vercel-env">
-                  同时更新Vercel环境变量 <span class="text-muted">(需要配置)</span>
+                  同时更新 Vercel 环境变量 <span class="text-muted">(需要配置)</span>
+                </label>
+              </div>
+              <div class="form-check mt-1">
+                <input class="form-check-input" type="checkbox" id="trigger-vercel-redeploy" disabled />
+                <label class="form-check-label" for="trigger-vercel-redeploy">
+                  同步后自动触发 Vercel 重新部署 <span class="text-muted">(使云端永久生效)</span>
                 </label>
               </div>
               <div id="vercel-config-status" class="vercel-config-status mt-2"></div>

@@ -1,7 +1,7 @@
 //#!/usr/bin/env node
 
 const Scraper = require('../bin/index.js')
-const { maskSensitiveInfo, formatRemainingTime, checkSidGuardExpiry, isImagesAweme } = require('../bin/index.js')
+const { maskSensitiveInfo, formatRemainingTime, checkSidGuardExpiry, isImagesAweme, extractMediaMeta } = require('../bin/index.js')
 const express = require('express')
 const path = require('path')
 const fs = require('fs')
@@ -90,13 +90,20 @@ async function processDouyinVideo(url, debugMode = false) {
         videoUrls = [stable || videoUrls[0]];
     }
     
+    const meta = extractMediaMeta(douyinData.aweme_detail);
+
     return { 
         code: 0, 
         data: { 
             video: videoUrls, 
             img: imgUrls, 
             debugMode, 
-            isImagesShare 
+            isImagesShare,
+            title: meta.title,
+            author: meta.author,
+            music: meta.music,
+            qualities: meta.qualities,
+            livePhotos: meta.livePhotos
         } 
     };
 }
@@ -348,6 +355,7 @@ app.post('/zjcdn', async (req, res) => {
 
             // 检查是否为图片集分享
             const isImagesShare = isImagesAweme(douyinData.aweme_detail);
+            const meta = extractMediaMeta(douyinData.aweme_detail);
             
             if (isImagesShare) {
                 // 图片集分享
@@ -360,8 +368,11 @@ app.post('/zjcdn', async (req, res) => {
                         debugMode: false, 
                         isImagesShare: true,
                         method: 'zjcdn-images',
-                        title: douyinData?.aweme_detail?.desc || '',
-                        author: douyinData?.aweme_detail?.author?.nickname || ''
+                        title: meta.title,
+                        author: meta.author,
+                        music: meta.music,
+                        qualities: [],
+                        livePhotos: meta.livePhotos
                     } 
                 };
             }
@@ -377,8 +388,11 @@ app.post('/zjcdn', async (req, res) => {
                     debugMode: false, 
                     isImagesShare: false,
                     method: 'zjcdn-auto',
-                    title: douyinData?.aweme_detail?.desc || '',
-                    author: douyinData?.aweme_detail?.author?.nickname || ''
+                    title: meta.title,
+                    author: meta.author,
+                    music: meta.music,
+                    qualities: meta.qualities,
+                    livePhotos: []
                 } 
             };
         });
@@ -777,7 +791,7 @@ try {
 
 app.post('/api/update-cookie', async (req, res) => {
     try {
-        const { cookie = '', uifid = '', updateVercel = false } = req.body || {};
+        const { cookie = '', uifid = '', updateVercel = false, triggerRedeploy = false } = req.body || {};
         const rawCookie = typeof cookie === 'string' ? cookie.trim() : '';
         const rawUifid = typeof uifid === 'string' ? uifid.trim().replace(/^UIFID(_TEMP)?=/i, '').replace(/;+$/, '').trim() : '';
         
@@ -825,10 +839,15 @@ app.post('/api/update-cookie', async (req, res) => {
             cleanedParts.push(`UIFID=${rawUifid}`);
             finalCookie = cleanedParts.join('; ') + ';';
             process.env.DOUYIN_UIFID = rawUifid;
+        } else {
+            // 若未单独传 uifid 但新 Cookie 中包含 UIFID，同步刷新 DOUYIN_UIFID 避免旧环境变量覆盖新值
+            const cookieUifidMatch = finalCookie.match(/(?:^|;\s*)UIFID(?:_TEMP)?=([^;]+)/i);
+            if (cookieUifidMatch && cookieUifidMatch[1] && process.env.DOUYIN_UIFID) {
+                process.env.DOUYIN_UIFID = cookieUifidMatch[1].trim();
+            }
         }
 
         // 🚀 动态更新环境变量中的cookie - 立即生效！
-        // 注意：这是用户主动更新的真实有效的 Cookie，不是我们生成的测试数据
         process.env.DOUYIN_COOKIE = finalCookie;
         console.log('🍪 DOUYIN_COOKIE 环境变量已更新，立即生效！[Cookie: ' + maskSensitiveInfo(finalCookie) + ']');
 
@@ -868,12 +887,15 @@ app.post('/api/update-cookie', async (req, res) => {
                 }
                 
                 // 更新或添加 DOUYIN_COOKIE
-                if (envContent.includes('DOUYIN_COOKIE=')) {
-                    // 替换现有的 DOUYIN_COOKIE 值
-                    envContent = envContent.replace(/DOUYIN_COOKIE=.*/g, `DOUYIN_COOKIE=${finalCookie}`);
+                if (/^DOUYIN_COOKIE=.*/m.test(envContent)) {
+                    envContent = envContent.replace(/^DOUYIN_COOKIE=.*/gm, `DOUYIN_COOKIE=${finalCookie}`);
                 } else {
-                    // 添加新的 DOUYIN_COOKIE
                     envContent = envContent.trim() + (envContent ? '\n' : '') + `DOUYIN_COOKIE=${finalCookie}\n`;
+                }
+
+                // 若本地文件已配置 DOUYIN_UIFID，同步更新避免旧值覆盖
+                if (extractedUifid && /^DOUYIN_UIFID=.*/m.test(envContent)) {
+                    envContent = envContent.replace(/^DOUYIN_UIFID=.*/gm, `DOUYIN_UIFID=${extractedUifid}`);
                 }
                 
                 // 写入文件
@@ -882,65 +904,125 @@ app.post('/api/update-cookie', async (req, res) => {
                 localFileUpdated = true;
             } catch (fileError) {
                 console.error('⚠️ .env.local 文件更新失败:', fileError.message);
-                // 不中断流程，因为环境变量已经更新
             }
         }
 
-        let vercelUpdateResult = null;
-        let message = '🎉 Cookie已更新并立即生效！无需重新部署 🚀';
-        let immediate = true;
-        let noRedeployNeeded = true;
+        const vercelUpdateResult = {
+            attempted: false,
+            success: false,
+            updatedKeys: [],
+            error: null,
+            redeploy: {
+                attempted: false,
+                triggered: false,
+                method: null,
+                url: null,
+                error: null
+            }
+        };
+
+        const immediate = true;
+        const noRedeployNeeded = !isVercel;
+        let message = localFileUpdated
+            ? '🎉 Cookie已更新并保存到 .env.local，立即生效 🚀'
+            : isVercel
+                ? '⚠️ 已更新当前实例内存（Vercel 需勾选同步环境变量并重新部署才能永久生效）'
+                : '🎉 Cookie已更新并立即生效 🚀';
 
         // 如果请求更新Vercel环境变量且功能可用
         if (updateVercel && vercelEnv) {
             const configStatus = vercelEnv.getConfigStatus();
             
             if (configStatus.isConfigured) {
+                vercelUpdateResult.attempted = true;
                 try {
-                    // 更新标准变量名
-                    vercelUpdateResult = await vercelEnv.updateEnvironmentVariable(
-                        'DOUYIN_COOKIE', 
+                    // 仅拉取一次项目环境变量，避免重复 API 请求
+                    const allVercelVars = await vercelEnv.getEnvironmentVariables();
+
+                    // 1. 更新标准变量 DOUYIN_COOKIE
+                    await vercelEnv.updateEnvironmentVariable(
+                        'DOUYIN_COOKIE',
                         finalCookie,
                         'encrypted',
-                        ['production', 'preview']
+                        ['production', 'preview'],
+                        allVercelVars
                     );
+                    vercelUpdateResult.updatedKeys.push('DOUYIN_COOKIE');
 
-                    // 兼容历史拼写错误: 若项目已存在 DOUYIN_COOCKIE，也同步更新避免“看起来没生效”
-                    try {
-                        const allVercelVars = await vercelEnv.getEnvironmentVariables();
-                        const hasLegacyTypoKey = allVercelVars.some(env => env.key === 'DOUYIN_COOCKIE');
-                        if (hasLegacyTypoKey) {
+                    // 2. 若项目已存在 DOUYIN_UIFID 且当前有 UIFID，同步更新避免旧值覆盖
+                    if (extractedUifid && allVercelVars.some(env => env.key === 'DOUYIN_UIFID')) {
+                        await vercelEnv.updateEnvironmentVariable(
+                            'DOUYIN_UIFID',
+                            extractedUifid,
+                            'encrypted',
+                            ['production', 'preview'],
+                            allVercelVars
+                        );
+                        vercelUpdateResult.updatedKeys.push('DOUYIN_UIFID');
+                    }
+
+                    // 3. 兼容历史拼写错误: 若项目已存在 DOUYIN_COOCKIE，同步更新
+                    if (allVercelVars.some(env => env.key === 'DOUYIN_COOCKIE')) {
+                        try {
                             await vercelEnv.updateEnvironmentVariable(
                                 'DOUYIN_COOCKIE',
                                 finalCookie,
                                 'encrypted',
-                                ['production', 'preview']
+                                ['production', 'preview'],
+                                allVercelVars
                             );
+                            vercelUpdateResult.updatedKeys.push('DOUYIN_COOCKIE');
+                        } catch (legacySyncError) {
+                            console.warn('同步历史变量 DOUYIN_COOCKIE 失败:', legacySyncError.message);
                         }
-                    } catch (legacySyncError) {
-                        console.warn('同步历史变量 DOUYIN_COOCKIE 失败:', legacySyncError.message);
                     }
 
-                    message = localFileUpdated 
-                        ? '🎉 Cookie立即生效 + .env.local已更新 + Vercel环境变量已备份 🚀'
-                        : '🎉 Cookie立即生效 + Vercel环境变量已备份 🚀';
+                    vercelUpdateResult.success = true;
+
+                    // 4. 可选：自动触发 Vercel 重新部署，使新环境变量在所有实例永久生效
+                    if (triggerRedeploy) {
+                        vercelUpdateResult.redeploy.attempted = true;
+                        try {
+                            const redeployRes = await vercelEnv.triggerRedeploy('production');
+                            vercelUpdateResult.redeploy.triggered = Boolean(redeployRes?.triggered);
+                            vercelUpdateResult.redeploy.method = redeployRes?.method || null;
+                            vercelUpdateResult.redeploy.url = redeployRes?.url || null;
+                        } catch (redeployErr) {
+                            console.error('Vercel重新部署触发失败:', redeployErr.message);
+                            vercelUpdateResult.redeploy.error = redeployErr.message;
+                        }
+                    }
+
+                    if (vercelUpdateResult.redeploy.attempted && vercelUpdateResult.redeploy.triggered) {
+                        message = '🎉 Vercel 环境变量已更新并已触发重新部署，约 30-60 秒后全量生效 🚀';
+                    } else if (vercelUpdateResult.redeploy.attempted && !vercelUpdateResult.redeploy.triggered) {
+                        message = `⚠️ Vercel 环境变量已更新，但自动重新部署失败：${vercelUpdateResult.redeploy.error}（请到 Vercel 后台手动 Redeploy）`;
+                    } else if (isVercel) {
+                        message = '✅ Vercel 环境变量已更新！请在 Vercel 后台 Redeploy（或勾选自动重新部署）以在所有实例永久生效';
+                    } else {
+                        message = localFileUpdated
+                            ? '🎉 .env.local 与 Vercel 环境变量均已更新 🚀'
+                            : '🎉 Cookie已更新并已同步到 Vercel 环境变量 🚀';
+                    }
                 } catch (vercelError) {
-                    console.error('Vercel环境变量更新失败:', vercelError);
+                    console.error('Vercel环境变量更新失败:', vercelError.message);
+                    vercelUpdateResult.success = false;
+                    vercelUpdateResult.error = vercelError.message;
                     message = localFileUpdated
-                        ? '🎉 Cookie已立即生效 + .env.local已更新！Vercel备份失败: ' + vercelError.message
-                        : '🎉 Cookie已立即生效！Vercel备份失败: ' + vercelError.message;
+                        ? `⚠️ 本地 .env.local 已更新，但 Vercel 同步失败：${vercelError.message}`
+                        : `⚠️ 仅当前会话已更新，Vercel 环境变量同步失败：${vercelError.message}`;
                 }
             } else {
-                message = localFileUpdated
-                    ? '🎉 Cookie已立即生效 + .env.local已更新！(Vercel配置不完整，但主要功能正常) 🚀'
-                    : '🎉 Cookie已立即生效！(Vercel配置不完整，但主要功能正常) 🚀';
+                vercelUpdateResult.attempted = true;
+                vercelUpdateResult.success = false;
+                vercelUpdateResult.error = '缺少 VERCEL_TOKEN 或 VERCEL_PROJECT_ID 环境变量';
+                message = `⚠️ Vercel 配置不完整（${vercelUpdateResult.error}），未能同步云端环境变量`;
             }
         } else if (updateVercel && !vercelEnv) {
-            message = localFileUpdated
-                ? '🎉 Cookie已立即生效 + .env.local已更新！(Vercel自动同步功能未启用，但主要功能正常) 🚀'
-                : '🎉 Cookie已立即生效！(Vercel自动同步功能未启用，但主要功能正常) 🚀';
-        } else if (localFileUpdated) {
-            message = '🎉 Cookie已更新并立即生效 + .env.local已保存！重启后依然有效 🚀';
+            vercelUpdateResult.attempted = true;
+            vercelUpdateResult.success = false;
+            vercelUpdateResult.error = 'VercelEnvManager 未启用';
+            message = '⚠️ Vercel 自动同步模块未启用，仅更新当前会话';
         }
 
         res.json({ 
@@ -948,6 +1030,7 @@ app.post('/api/update-cookie', async (req, res) => {
             message,
             immediate,
             noRedeployNeeded,
+            isVercel,
             localFileUpdated,
             sidGuardStatus: {
                 isValid: sidGuardStatus.isValid,
@@ -957,8 +1040,8 @@ app.post('/api/update-cookie', async (req, res) => {
                 remainingSeconds: sidGuardStatus.details ? sidGuardStatus.details.remainingSeconds : 0
             },
             uifidStatus,
-            vercelConfig: vercelEnv ? vercelEnv.getConfigStatus() : { isConfigured: false, available: false },
-            vercelUpdateResult: vercelUpdateResult ? { success: true } : null
+            vercelConfig: vercelEnv ? vercelEnv.getConfigStatus() : { isConfigured: false, available: false, isVercel },
+            vercelUpdateResult
         });
 
     } catch (error) {
