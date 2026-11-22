@@ -1,6 +1,35 @@
 const fetch = require('node-fetch')
+const crypto = require('crypto')
 const { sign } = require('./sign')
 const getDeepProperty = require("@orange-opensource/get-deep-property");
+
+const MOBILE_FEED_ENDPOINTS = [
+    'https://api5-normal-c-hl.amemv.com/aweme/v1/feed/',
+    'https://aweme.snssdk.com/aweme/v1/feed/',
+];
+
+const MOBILE_FEED_USER_AGENT =
+    'com.ss.android.ugc.aweme/290101 (Linux; U; Android 10; zh_CN; Pixel 4; ' +
+    'Build/QQ3A.200805.001; Cronet/TTNetVersion:5f9037be 2023-01-13 QuicVersion:4668bb42 2022-11-21)';
+
+const SECSDK_WEBSIGN_CONST = 'A96D855A08C0A9707F8BEF0D9A527E4E';
+
+const TOXIC_SECSDK_COOKIE_PATTERNS = [
+    /^bd_ticket_guard/i,
+    /^_bd_ticket_crypt_cookie$/i,
+    /^__security/i,
+    /^fpk\d*$/i,
+    /^x_tt_token$/i,
+    /^sdk_source_info$/i,
+];
+
+const isImagesAweme = (awemeDetail) => {
+    if (!awemeDetail || typeof awemeDetail !== 'object') return false;
+    if ([2, 42].includes(awemeDetail.media_type) || awemeDetail.aweme_type === 68) {
+        return Array.isArray(awemeDetail.images) && awemeDetail.images.length > 0;
+    }
+    return Array.isArray(awemeDetail.images) && awemeDetail.images.length > 0 && !awemeDetail.video?.play_addr?.url_list?.length;
+};
 
 // 工具函数：安全地隐藏敏感信息用于日志输出
 const maskSensitiveInfo = (str, type = 'cookie') => {
@@ -66,8 +95,18 @@ const checkSidGuardExpiry = (sidGuard) => {
         }
 
         const [sessionId, generateTimestampStr, validitySecondsStr, gmtTime] = parts;
-        const generateTimestamp = parseInt(generateTimestampStr);
-        const validitySeconds = parseInt(validitySecondsStr);
+        if (!/^\d+$/.test(generateTimestampStr)) {
+            result.error = `生成时间戳格式错误: ${generateTimestampStr}`;
+            return result;
+        }
+
+        if (!/^\d+$/.test(validitySecondsStr)) {
+            result.error = `有效期秒数格式错误: ${validitySecondsStr}`;
+            return result;
+        }
+
+        const generateTimestamp = Number(generateTimestampStr);
+        const validitySeconds = Number(validitySecondsStr);
 
         if (isNaN(generateTimestamp)) {
             result.error = `生成时间戳格式错误: ${generateTimestampStr}`;
@@ -141,6 +180,129 @@ class Scraper {
         // Simple cache for video IDs
         this.videoIdCache = new Map();
         this.cacheMaxSize = 100;
+        this.ttwidCache = null;
+    }
+
+    _matchVideoIdFromUrl(targetUrl) {
+        if (!targetUrl || typeof targetUrl !== 'string') return null;
+        if (targetUrl === 'https://www.douyin.com/' || targetUrl === 'https://www.douyin.com') {
+            return null;
+        }
+        for (let j = 0; j < this.urlPatterns.length; j++) {
+            const match = targetUrl.match(this.urlPatterns[j]);
+            if (match) {
+                return match[match.length - 1];
+            }
+        }
+        return null;
+    }
+
+    _extractUifid(cookieString) {
+        for (const envKey of ['DOUYIN_UIFID', 'DY_UIFID']) {
+            const envVal = (process.env[envKey] || '').trim().replace(/^['"]|['"]$/g, '');
+            if (envVal) return envVal;
+        }
+        if (!cookieString || typeof cookieString !== 'string') return '';
+        const raw = cookieString.trim().replace(/^['"]|['"]$/g, '');
+        if (!raw.includes('=') && raw.length >= 32) return raw;
+        for (const pair of raw.split(';')) {
+            const eqIdx = pair.indexOf('=');
+            if (eqIdx === -1) continue;
+            const k = pair.slice(0, eqIdx).trim().replace(/^['"]|['"]$/g, '').toUpperCase();
+            const v = pair.slice(eqIdx + 1).trim().replace(/^['"]|['"]$/g, '');
+            if ((k === 'UIFID' || k === 'UIFID_TEMP') && v) return v;
+        }
+        return '';
+    }
+
+    _sanitizeWebCookie(cookieString, ttwid) {
+        const parts = [];
+        let hasTtwid = false;
+        if (cookieString && typeof cookieString === 'string' && !cookieString.includes('替换为您的sid_guard值')) {
+            for (const pair of cookieString.split(';')) {
+                const trimmed = pair.trim();
+                if (!trimmed || !trimmed.includes('=')) continue;
+                const name = trimmed.split('=', 1)[0].trim();
+                if (TOXIC_SECSDK_COOKIE_PATTERNS.some((re) => re.test(name))) continue;
+                if (name.toLowerCase() === 'ttwid') hasTtwid = true;
+                parts.push(trimmed);
+            }
+        }
+        if (!hasTtwid && ttwid) {
+            parts.push(`ttwid=${ttwid}`);
+        }
+        return parts.join('; ');
+    }
+
+    _generateMsToken(length = 107) {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+        const bytes = crypto.randomBytes(length);
+        let out = '';
+        for (let i = 0; i < length; i++) {
+            out += chars[bytes[i] % chars.length];
+        }
+        return out;
+    }
+
+    _signSecSdk(url, uifid, ts = Math.floor(Date.now() / 1000)) {
+        if (!uifid) return url;
+        const qIdx = url.indexOf('?');
+        const base = qIdx === -1 ? url : url.slice(0, qIdx);
+        const query = qIdx === -1 ? '' : url.slice(qIdx + 1);
+
+        const parts = [];
+        const names = new Set();
+        for (const pair of query.split('&')) {
+            if (!pair) continue;
+            const eqIdx = pair.indexOf('=');
+            const rawK = eqIdx === -1 ? pair : pair.slice(0, eqIdx);
+            const rawV = eqIdx === -1 ? '' : pair.slice(eqIdx + 1);
+            let k = rawK;
+            let v = rawV;
+            try { k = decodeURIComponent(rawK.replace(/\+/g, ' ')); } catch (_) {}
+            try { v = decodeURIComponent(rawV.replace(/\+/g, ' ')); } catch (_) {}
+            names.add(k);
+            parts.push(`${k}=${encodeURIComponent(v)}`);
+        }
+        if (!names.has('uifid')) {
+            parts.push(`uifid=${encodeURIComponent(uifid)}`);
+        }
+
+        const signedQuery = `${parts.join('&')}&timestamp=${ts}`;
+        const plain = `${uifid}_${ts}_${SECSDK_WEBSIGN_CONST}_${signedQuery}`;
+        const signature = crypto.createHash('md5').update(plain, 'utf8').digest('hex');
+        return `${base}?${signedQuery}&x-secsdk-web-signature=${signature}`;
+    }
+
+    async _getTtwid() {
+        if (this.ttwidCache) return this.ttwidCache;
+        try {
+            const res = await fetch('https://ttwid.bytedance.com/ttwid/union/register/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    region: 'cn',
+                    aid: 6383,
+                    need_t: 1,
+                    service: 'www.douyin.com',
+                    migrate_priority: 0,
+                    cb_url_protocol: 'https',
+                    domain: '.douyin.com'
+                }),
+                timeout: 5000
+            });
+            const setCookies = res.headers.raw()['set-cookie'] || [];
+            for (const c of setCookies) {
+                const match = c.match(/ttwid=([^;]+)/);
+                if (match && match[1]) {
+                    this.ttwidCache = match[1];
+                    return this.ttwidCache;
+                }
+            }
+        } catch (e) {
+            console.log('⚠️ 获取动态 ttwid 失败:', e.message);
+        }
+        return null;
     }
 
     /**
@@ -196,6 +358,20 @@ class Scraper {
                 }
                 
                 try {
+                    // 先尝试 manual 重定向，直接从 Location 提取 videoId，避免下载整页 HTML
+                    const manualRes = await fetch(url, {
+                        headers,
+                        redirect: 'manual',
+                        timeout: 8000
+                    });
+                    const location = manualRes.headers.get('location');
+                    const manualVideoId = this._matchVideoIdFromUrl(location);
+                    if (manualVideoId) {
+                        this._cacheVideoId(url, manualVideoId);
+                        resolve(manualVideoId);
+                        return;
+                    }
+
                     const res = await fetch(url, {
                         headers,
                         redirect: 'follow', // 跟随重定向
@@ -203,30 +379,10 @@ class Scraper {
                     });
 
                     if (!res?.url) {
-
                         continue;
                     }
-                    
-                    // 如果重定向到主页，尝试下一个用户代理
-                    if (res.url === 'https://www.douyin.com/' || res.url === 'https://www.douyin.com') {
 
-                        continue;
-                    }
-                    
-                    // Use precompiled patterns
-                    let videoId = null;
-                    let matchedPattern = '';
-                    
-                    for (let j = 0; j < this.urlPatterns.length; j++) {
-                        const match = res.url.match(this.urlPatterns[j]);
-                        if (match) {
-                            videoId = match[match.length - 1]; // 取最后一个捕获组
-                            matchedPattern = `Pattern ${j + 1}`;
-
-                            break;
-                        }
-                    }
-                    
+                    const videoId = this._matchVideoIdFromUrl(res.url);
                     if (videoId) {
                         // Cache the result
                         this._cacheVideoId(url, videoId);
@@ -352,45 +508,120 @@ class Scraper {
         }
     }
     /**
+     * @description 通过移动端 Feed 接口获取作品详情（免 Argus 门禁、免 Cookie、免签名）
+     * @param {string} videoId
+     * @returns {Promise<object|null>}
+     */
+    async _getDouyinVideoDataFromMobileFeed(videoId) {
+        const enableMobileFeed = (process.env.DOUYIN_ENABLE_MOBILE_FEED || '1').trim().toLowerCase();
+        if (['0', 'false', 'no', 'off'].includes(enableMobileFeed)) {
+            return null;
+        }
+
+        const headers = {
+            'User-Agent': MOBILE_FEED_USER_AGENT,
+            'Accept': 'application/json, text/plain, */*',
+        };
+
+        for (const endpoint of MOBILE_FEED_ENDPOINTS) {
+            try {
+                const feedUrl = `${endpoint}?aweme_id=${encodeURIComponent(videoId)}&aid=1128`;
+                const res = await fetch(feedUrl, { headers, timeout: 6000 });
+                if (!res.ok) {
+                    console.log(`⚠️ Mobile Feed (${endpoint}) HTTP ${res.status}`);
+                    continue;
+                }
+                const text = await res.text();
+                if (!text) continue;
+                const json = JSON.parse(text);
+                const awemeList = Array.isArray(json.aweme_list) ? json.aweme_list : [];
+                const matched = awemeList.find(
+                    (item) => item && String(item.aweme_id || item.id || '') === String(videoId)
+                );
+                if (matched) {
+                    console.log(`✅【parser】移动端 Feed 通道获取视频数据成功 (${new URL(endpoint).hostname})`);
+                    return {
+                        status_code: 0,
+                        aweme_detail: matched,
+                        _source: 'mobile_feed'
+                    };
+                }
+            } catch (err) {
+                console.log(`⚠️ Mobile Feed (${endpoint}) 请求异常:`, err.message);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * @description 备用通道：通过 PC Web Detail API 获取作品详情（支持 a_bogus + uifid/x-secsdk-web-signature）
+     * @param {string} videoId
+     * @returns {Promise<object>}
+     */
+    async _getDouyinVideoDataFromWebApi(videoId) {
+        const msToken = this._generateMsToken(107);
+        const apiUrl = `https://www.douyin.com/aweme/v1/web/aweme/detail/?device_platform=webapp&aid=6383&channel=channel_pc_web&aweme_id=${videoId}&pc_client_type=1&version_code=190500&version_name=19.5.0&cookie_enabled=true&msToken=${encodeURIComponent(msToken)}`;
+        const urlParser = new URL(apiUrl);
+        const query = urlParser.search.replace('?', '');
+        const a_bogus = await sign(query, this.headers['User-Agent']);
+        let finalUrl = `${apiUrl}&a_bogus=${encodeURIComponent(a_bogus)}`;
+
+        const ttwid = await this._getTtwid();
+        const uifid = this._extractUifid(this.douyinApiHeaders.cookie);
+        const headers = {
+            ...this.douyinApiHeaders,
+            'Accept': 'application/json, text/plain, */*',
+            'Referer': `https://www.douyin.com/video/${videoId}`,
+            'cookie': this._sanitizeWebCookie(this.douyinApiHeaders.cookie, ttwid),
+        };
+        if (uifid) {
+            headers['uifid'] = uifid;
+            finalUrl = this._signSecSdk(finalUrl, uifid);
+        }
+
+        const res = await fetch(finalUrl, { headers, timeout: 10000 });
+        const text = await res.text();
+
+        if (!res.ok) {
+            const preview = text.slice(0, 200).trim();
+            console.log(`❌【DEBUG】Web API 返回 HTTP ${res.status}: ${preview}`);
+            if (res.status === 403 && preview.includes('ArgusSecurityPlugin')) {
+                throw new Error(`抖音Web接口触发风控拦截 (${preview})，请配置包含 UIFID 的完整 Cookie 或稍后重试`);
+            }
+            throw new Error(`抖音Web接口请求失败 (HTTP ${res.status})`);
+        }
+
+        try {
+            const json = JSON.parse(text);
+            if (!json || !json.aweme_detail) {
+                const reason = json?.filter_detail?.detail_msg || json?.status_msg || '未返回有效视频数据';
+                throw new Error(`解析失败: ${reason}`);
+            }
+            return json;
+        } catch (parseError) {
+            if (parseError.message && parseError.message.startsWith('解析失败:')) {
+                throw parseError;
+            }
+            console.log('❌【DEBUG】JSON解析失败，可能是HTML错误页面或需要更新Cookie');
+            throw new Error('Cookie已失效或触发风控，需要更新Cookie后重试');
+        }
+    }
+
+    /**
      * @description get videoData by video id
      * @param {string} videoId
-     * @returns {object}v videoData
+     * @returns {Promise<object>} videoData
      */
     async getDouyinVideoData(videoId) {
-        let apiUrl = `https://www.douyin.com/aweme/v1/web/aweme/detail/?device_platform=webapp&aid=6383&channel=channel_pc_web&aweme_id=${videoId}&pc_client_type=1&version_code=190500&version_name=19.5.0&cookie_enabled=true&screen_width=1344&screen_height=756&browser_language=zh-CN&browser_platform=Win32&browser_name=Firefox&browser_version=110.0&browser_online=true&engine_name=Gecko&engine_version=109.0&os_name=Windows&os_version=10&cpu_core_num=16&device_memory=&platform=PC&webid=7158288523463362079&msToken=abL8SeUTPa9-EToD8qfC7toScSADxpg6yLh2dbNcpWHzE0bT04txM_4UwquIcRvkRb9IU8sifwgM1Kwf1Lsld81o9Irt2_yNyUbbQPSUO8EfVlZJ_78FckDFnwVBVUVK`;
-        const urlParser = new URL(apiUrl)
-        const query = urlParser.search.replace('?', '')
-        console.log('【parser】query参数：', query, 'User-agent：', this.headers['User-Agent'])
-        const a_bogus = await sign(query, this.headers['User-Agent'])
-        console.log('【parser】 生成的a_bogus签名为: ' + a_bogus)
-        const new_url = apiUrl + "&a_bogus=" + a_bogus
-        console.log('【parser】 正在获取视频数据: \n')
-        try {
-            const res = await fetch(new_url, {
-                headers: this.douyinApiHeaders
-            })
-            
-            const text = await res.text();
-            
-            try {
-                const json = JSON.parse(text);
-                return json;
-            } catch (parseError) {
-                console.log('❌【DEBUG】JSON解析失败，可能是HTML错误页面或需要更新Cookie');
-                throw new Error('Cookie已失效，需要更新Cookie后重试');
-            }
-        } catch (e) {
-           throw new Error(e);
+        // 1. 优先走移动端 Feed 核心通道（免 Argus 403、免 Cookie、免签名）
+        const mobileData = await this._getDouyinVideoDataFromMobileFeed(videoId);
+        if (mobileData && mobileData.aweme_detail) {
+            return mobileData;
         }
-        // return new Promise((resolve, reject) => {
-        //     fetch(new_url, {
-        //         headers: this.douyinApiHeaders
-        //     }).then((res) => res.json())
-        //         .then(json => {
-        //             resolve(json)
-        //         })
-        //         .catch(err => reject(err));
-        // })
+
+        // 2. 兜底回退到 PC Web Detail API
+        console.log('🔄【parser】移动端 Feed 未命中，回退到 Web Detail API...');
+        return await this._getDouyinVideoDataFromWebApi(videoId);
     }
 
     /**
@@ -480,7 +711,7 @@ class Scraper {
 
     async getDouyinNoWatermarkVideo(videoData) {
         let noWatermarkUrls = [];
-        const isImagesShare = [2, 42].includes(videoData.aweme_detail.media_type)
+        const isImagesShare = isImagesAweme(videoData?.aweme_detail)
         if (!isImagesShare) {
             const video = videoData.aweme_detail.video;
             if (!video?.play_addr?.url_list?.length) {
@@ -675,3 +906,4 @@ module.exports = Scraper;
 module.exports.maskSensitiveInfo = maskSensitiveInfo;
 module.exports.formatRemainingTime = formatRemainingTime;
 module.exports.checkSidGuardExpiry = checkSidGuardExpiry;
+module.exports.isImagesAweme = isImagesAweme;

@@ -2285,11 +2285,11 @@ class CookieManager {
     let isValidFormat = false;
     
     // 检查是否是完整的sid_guard cookie格式
-    if (cookieValue.startsWith('sid_guard=') && cookieValue.includes('%7C')) {
+    if (cookieValue.startsWith('sid_guard=') && (cookieValue.includes('%7C') || cookieValue.includes('|'))) {
       isValidFormat = true;
     }
-    // 检查是否只是sid_guard的值（包含%7C分隔符）
-    else if (cookieValue.includes('%7C') && !cookieValue.includes('=')) {
+    // 检查是否只是sid_guard的值（包含编码或原始分隔符）
+    else if ((cookieValue.includes('%7C') || cookieValue.includes('|')) && !cookieValue.includes('=')) {
       isValidFormat = true;
     }
     // 检查是否包含sid_guard参数
